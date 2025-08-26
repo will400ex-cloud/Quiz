@@ -20,5 +20,49 @@
     ],
     "correctIndex": 1,
     "time": 20
+  },
+  {
+    "question": "Quel est le port TCP par défaut de Modbus TCP ?",
+    "options": [
+      "502",
+      "44818",
+      "20000",
+      "102"
+    ],
+    "correctIndex": 0,
+    "time": 15
+  },
+  {
+    "question": "Dans le modèle Purdue (ISA-95), à quel niveau se situent typiquement les automates (PLC) ?",
+    "options": [
+      "Niveau 0",
+      "Niveau 1-2",
+      "Niveau 3 (MES)",
+      "Niveau 4 (ERP)"
+    ],
+    "correctIndex": 1,
+    "time": 20
+  },
+  {
+    "question": "Lequel n’est PAS un protocole de terrain Ethernet industriel ?",
+    "options": [
+      "EtherCAT",
+      "PROFINET",
+      "DeviceNet",
+      "EtherNet/IP"
+    ],
+    "correctIndex": 2,
+    "time": 20
+  },
+  {
+    "question": "La trame MAC source/destination appartient à quelle couche OSI ?",
+    "options": [
+      "1 – Physique",
+      "2 – Liaison de données",
+      "3 – Réseau",
+      "4 – Transport"
+    ],
+    "correctIndex": 1,
+    "time": 15
   }
 ]

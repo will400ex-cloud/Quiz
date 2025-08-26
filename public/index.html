@@ -1,1 +1,134 @@
-<!DOCTYPE html><html><body><h1>Player Page</h1></body></html>
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Quiz Live — Joueur</title>
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="min-h-screen bg-gray-100">
+  <div class="max-w-xl mx-auto p-6">
+    <h1 class="text-2xl font-bold mb-4">Rejoindre un quiz</h1>
+    <div id="join" class="space-y-3">
+      <input id="pin" class="w-full border p-2 rounded" placeholder="Code PIN (6 chiffres)" />
+      <input id="name" class="w-full border p-2 rounded" placeholder="Votre nom" />
+      <button id="joinBtn" class="w-full bg-blue-600 text-white rounded p-3 font-semibold">Rejoindre</button>
+      <p id="joinMsg" class="text-sm text-red-600"></p>
+    </div>
+
+    <div id="lobby" class="hidden mt-8">
+      <p class="text-gray-700">Connecté. En attente de la première question…</p>
+    </div>
+
+    <div id="question" class="hidden mt-8">
+      <div class="text-sm text-gray-500" id="qProgress"></div>
+      <h2 id="qText" class="text-xl font-semibold mb-3"></h2>
+      <div class="flex items-center justify-between mb-2">
+        <div id="timer" class="text-gray-600"></div>
+        <div id="deadline" class="text-gray-500 text-sm"></div>
+      </div>
+      <div id="options" class="grid grid-cols-1 gap-3"></div>
+      <p id="answerMsg" class="mt-3 text-sm"></p>
+    </div>
+
+    <div id="result" class="hidden mt-8">
+      <h3 class="text-lg font-semibold mb-2">Correction</h3>
+      <p id="correctMsg" class="mb-2"></p>
+      <p id="scoreMsg" class="text-gray-700"></p>
+    </div>
+
+    <div id="end" class="hidden mt-10">
+      <h2 class="text-2xl font-bold mb-2">Quiz terminé!</h2>
+      <p class="text-gray-700">Merci d’avoir participé.</p>
+    </div>
+  </div>
+
+  <script>
+    const socket = io();
+    let currentRoom = null;
+    let me = { name: null, score: 0 };
+    let endAt = null;
+    let rafId = null;
+    let hasAnswered = false;
+
+    const $ = (id)=>document.getElementById(id);
+    const joinEl = $('join'), lobbyEl = $('lobby'), qEl = $('question'), endEl = $('end');
+    const optionsEl = $('options');
+    const qText = $('qText'), qProg = $('qProgress'), qTimer = $('timer'), deadlineEl = $('deadline');
+    const answerMsg = $('answerMsg'), resultEl = $('result');
+
+    function fmtMs(ms) {
+      const s = Math.max(0, Math.ceil(ms / 1000));
+      return s + 's';
+    }
+    function loopTimer() {
+      if (!endAt) return;
+      const ms = endAt - Date.now();
+      qTimer.textContent = 'Temps restant : ' + fmtMs(ms);
+      if (ms > 0) rafId = requestAnimationFrame(loopTimer);
+    }
+
+    $('joinBtn').onclick = () => {
+      const pin = $('pin').value.trim();
+      const name = $('name').value.trim();
+      if (!pin || !/^\d{6}$/.test(pin)) { $('joinMsg').textContent = 'PIN invalide'; return; }
+      if (!name) { $('joinMsg').textContent = 'Entrez un nom'; return; }
+      $('joinMsg').textContent = '';
+      socket.emit('player:join', { roomCode: pin, name });
+    };
+
+    socket.on('player:error', msg => { $('joinMsg').textContent = msg; });
+
+    socket.on('player:joined', ({ roomCode, name }) => {
+      currentRoom = roomCode; me.name = name;
+      joinEl.classList.add('hidden'); lobbyEl.classList.remove('hidden');
+    });
+
+    socket.on('room:question', ({ index, total, question, options, time, endAt: end }) => {
+      lobbyEl.classList.add('hidden'); resultEl.classList.add('hidden');
+      qEl.classList.remove('hidden'); endEl.classList.add('hidden');
+      qProg.textContent = `Question ${index+1} / ${total}`;
+      qText.textContent = question;
+      optionsEl.innerHTML = '';
+      hasAnswered = false;
+      options.forEach((opt, i) => {
+        const btn = document.createElement('button');
+        btn.className = 'w-full border rounded p-3 bg-white hover:bg-gray-50 text-left';
+        btn.textContent = `${'ABCD'[i]}. ${opt}`;
+        btn.onclick = () => {
+          if (hasAnswered) return;
+          hasAnswered = true;
+          socket.emit('player:answer', { roomCode: currentRoom, choiceIndex: i });
+          answerMsg.textContent = 'Réponse envoyée ✅';
+        };
+        optionsEl.appendChild(btn);
+      });
+      // Chronomètre synchronisé
+      endAt = end;
+      deadlineEl.textContent = new Date(endAt).toLocaleTimeString();
+      if (rafId) cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(loopTimer);
+      answerMsg.textContent = '';
+    });
+
+    socket.on('room:reveal', ({ correctIndex, perPlayer }) => {
+      const meStats = perPlayer.find(p => p.name === me.name);
+      me.score = meStats?.score ?? me.score;
+      resultEl.classList.remove('hidden');
+      $('correctMsg').textContent = `Bonne réponse : ${'ABCD'[correctIndex]}`;
+      $('scoreMsg').textContent = `Votre score : ${me.score} pts`;
+    });
+
+    socket.on('room:ended', () => {
+      qEl.classList.add('hidden'); resultEl.classList.add('hidden'); endEl.classList.remove('hidden');
+    });
+
+    socket.on('room:gameOver', ({ leaderboard }) => {
+      qEl.classList.add('hidden');
+      resultEl.classList.add('hidden');
+      endEl.classList.remove('hidden');
+    });
+  </script>
+</body>
+</html>
