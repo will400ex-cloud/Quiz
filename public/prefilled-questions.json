@@ -1,0 +1,24 @@
+[
+  {
+    "question": "Quelle couche du modèle OSI correspond au protocole TCP ?",
+    "options": [
+      "2 – Liaison de données",
+      "3 – Réseau",
+      "4 – Transport",
+      "7 – Application"
+    ],
+    "correctIndex": 2,
+    "time": 20
+  },
+  {
+    "question": "Quel protocole est le plus adapté au temps réel déterministe ?",
+    "options": [
+      "EtherNet/IP (CIP)",
+      "PROFINET IRT",
+      "Modbus TCP",
+      "IO-Link (couche capteur)"
+    ],
+    "correctIndex": 1,
+    "time": 20
+  }
+]
