@@ -1,4 +1,7 @@
-// server.js
+// server.js — Quiz Live (Express + Socket.IO)
+// Démarrage : node server.js
+// Nécessite : npm i express socket.io
+
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
@@ -8,13 +11,15 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: '*' } });
 
+// Servir les fichiers statiques
 app.use(express.static('public'));
 
-// Route propre /host (sans extension)
+// Route /host (permet d'utiliser /host sans extension)
 app.get('/host', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'host.html'));
 });
 
+// ---- État des salons ----
 const rooms = new Map(); // roomCode -> state
 
 function newRoomState() {
@@ -33,7 +38,7 @@ function newRoomState() {
 }
 
 function generatePIN() {
-  return Math.floor(100000 + Math.random() * 900000).toString();
+  return Math.floor(100000 + Math.random() * 900000).toString(); // 6 chiffres
 }
 
 function leaderboard(state) {
@@ -43,12 +48,13 @@ function leaderboard(state) {
     .slice(0, 50);
 }
 
+// Export CSV (classement + détails par question)
 function roomCsv(state) {
   const players = Array.from(state.players.values()).map(p => ({name:p.name, score:p.score})).sort((a,b)=>b.score-a.score);
   let lines = [];
   lines.push("Classement,Nom,Score");
   players.forEach((p,i)=>{
-    lines.push(`${i+1},${p.name.replaceAll(',',' ')},${p.score}`);
+    lines.push(`${i+1},${(p.name||'').replaceAll(',',' ')},${p.score}`);
   });
   lines.push("");
   lines.push("Détails par question");
@@ -56,14 +62,15 @@ function roomCsv(state) {
   state.history.forEach(h=>{
     const correctLetter = "ABCD"[h.correctIndex];
     h.perPlayer.forEach(pp=>{
-      lines.push(`${h.index+1},"${h.question.replaceAll('"','""')}",${correctLetter},${pp.name.replaceAll(',',' ')},${pp.correct ? "oui":"non"},${pp.timeMs ?? ""},${pp.earned ?? 0}`);
+      lines.push(`${h.index+1},"${(h.question||'').replaceAll('"','""')}",${correctLetter},${(pp.name||'').replaceAll(',',' ')},${pp.correct ? "oui":"non"},${pp.timeMs ?? ""},${pp.earned ?? 0}`);
     });
   });
   return lines.join("\n");
 }
 
+// ---- Socket.IO ----
 io.on('connection', (socket) => {
-  // Host creates a room
+  // Host crée un salon
   socket.on('host:createRoom', () => {
     const roomCode = generatePIN();
     const state = newRoomState();
@@ -74,16 +81,19 @@ io.on('connection', (socket) => {
     socket.emit('host:roomCreated', roomCode);
   });
 
-  // Host loads quiz
+  // Host charge des questions (JSON)
   socket.on('host:loadQuiz', ({ roomCode, quiz }) => {
     const state = rooms.get(roomCode);
     if (!state || state.hostId !== socket.id) return;
-    const safe = Array.isArray(quiz) ? quiz.filter(q => q && q.question && Array.isArray(q.options) && q.options.length === 4 && typeof q.correctIndex === 'number') : [];
+    // Validation minimale
+    const safe = Array.isArray(quiz)
+      ? quiz.filter(q => q && q.question && Array.isArray(q.options) && q.options.length === 4 && typeof q.correctIndex === 'number')
+      : [];
     state.quiz = safe;
     io.to(roomCode).emit('room:quizLoaded', { count: safe.length });
   });
 
-  // Player joins room
+  // Joueur rejoint
   socket.on('player:join', ({ roomCode, name }) => {
     const state = rooms.get(roomCode);
     if (!state) {
@@ -91,25 +101,39 @@ io.on('connection', (socket) => {
       return;
     }
     socket.join(roomCode);
-    state.players.set(socket.id, { name: (name || 'Anonyme').trim() || 'Anonyme', score: 0, answeredAt: null, lastCorrect: null, choiceIndex: null });
+    state.players.set(socket.id, {
+      name: (name || 'Anonyme').trim() || 'Anonyme',
+      score: 0,
+      answeredAt: null,
+      lastCorrect: null,
+      choiceIndex: null
+    });
     io.to(state.hostId).emit('host:players', Array.from(state.players.values()).map(p => ({ name: p.name, score: p.score })));
     socket.emit('player:joined', { roomCode, name });
   });
 
-  // Host starts next question
+  // Host lance la question suivante
   socket.on('host:nextQuestion', ({ roomCode }) => {
     const state = rooms.get(roomCode);
     if (!state || state.hostId !== socket.id) return;
+
     state.currentIndex += 1;
     if (state.currentIndex >= state.quiz.length) {
       io.to(roomCode).emit('room:gameOver', { leaderboard: leaderboard(state) });
       state.acceptingAnswers = false;
       return;
     }
+
+    // Reset état de question
     state.responses = [0,0,0,0];
-    for (const p of state.players.values()) { p.answeredAt = null; p.lastCorrect = null; p.choiceIndex = null; }
+    for (const p of state.players.values()) {
+      p.answeredAt = null;
+      p.lastCorrect = null;
+      p.choiceIndex = null;
+    }
     state.acceptingAnswers = true;
     state.questionStartTs = Date.now();
+
     const q = state.quiz[state.currentIndex];
     const duration = (q.time ?? 20) * 1000;
     state.endAtMs = state.questionStartTs + duration;
@@ -124,12 +148,12 @@ io.on('connection', (socket) => {
     });
   });
 
-  // Player answers
+  // Joueur répond
   socket.on('player:answer', ({ roomCode, choiceIndex }) => {
     const state = rooms.get(roomCode);
     if (!state || !state.acceptingAnswers) return;
     const player = state.players.get(socket.id);
-    if (!player || player.answeredAt !== null) return;
+    if (!player || player.answeredAt !== null) return; // empêche les multi-réponses
 
     player.answeredAt = Date.now();
     player.choiceIndex = choiceIndex;
@@ -138,7 +162,7 @@ io.on('connection', (socket) => {
     io.to(roomCode).emit('room:liveResponses', { responses: state.responses });
   });
 
-  // Host reveals correct & scores
+  // Host révèle la bonne réponse + calcule les points
   socket.on('host:reveal', ({ roomCode }) => {
     const state = rooms.get(roomCode);
     if (!state || state.hostId !== socket.id) return;
@@ -156,8 +180,9 @@ io.on('connection', (socket) => {
         if (correct) {
           const t = Math.max(0, Math.min(duration, p.answeredAt - state.questionStartTs));
           timeMs = t;
-          const speedFactor = 1 - (t / duration);
-          earned = Math.round(200 + 800 * speedFactor);
+          const speedFactor = 1 - (t / duration);   // 1 (très rapide) -> 0 (limite du temps)
+          const raw = 200 + 800 * speedFactor;      // 200..1000
+          earned = Math.round(raw / 50) * 50;       // arrondi au multiple de 50 (200, 250, ..., 1000)
           p.score += earned;
         }
       } else {
@@ -180,20 +205,7 @@ io.on('connection', (socket) => {
     });
   });
 
-  // Export CSV route
-  app.get('/export/:room', (req, res) => {
-    const state = rooms.get(req.params.room);
-    if (!state) {
-      return res.status(404).send('Salon introuvable.');
-    }
-    const csv = roomCsv(state);
-    const fileName = `scores_${req.params.room}.csv`;
-    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-    res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
-    res.send(csv);
-  });
-
-  // Disconnect handling
+  // Déconnexion : nettoie l'état
   socket.on('disconnect', () => {
     for (const [roomCode, state] of rooms) {
       if (state.hostId === socket.id) {
@@ -210,6 +222,20 @@ io.on('connection', (socket) => {
   });
 });
 
+// Route Export CSV
+app.get('/export/:room', (req, res) => {
+  const state = rooms.get(req.params.room);
+  if (!state) {
+    return res.status(404).send('Salon introuvable.');
+  }
+  const csv = roomCsv(state);
+  const fileName = `scores_${req.params.room}.csv`;
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+  res.send(csv);
+});
+
+// Lancement serveur
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
   console.log('Quiz server running on http://localhost:' + PORT);
