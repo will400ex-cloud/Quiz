@@ -7,13 +7,3 @@ services:
     buildCommand: "npm install"
     startCommand: "node server.js"
     autoDeploy: true
-    routes:
-      # Page animateur
-      - type: rewrite
-        source: /host
-        destination: /host.html
-
-      # Export CSV : laisser passer tel quel
-      - type: rewrite
-        source: /export/(.*)
-        destination: /export/$1
