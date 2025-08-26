@@ -3,13 +3,11 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Quiz Live — Joueur (Interactive)</title>
+  <title>Quiz Live — Joueur</title>
   <script src="/socket.io/socket.io.js"></script>
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
     .btn:disabled{opacity:0.7; cursor:not-allowed;}
-    .pulse{animation:pulse 1s ease-in-out 2}
-    @keyframes pulse{0%{transform:scale(1)}50%{transform:scale(1.03)}100%{transform:scale(1)}}
   </style>
 </head>
 <body class="min-h-screen bg-gradient-to-b from-slate-100 to-slate-200">
@@ -19,7 +17,6 @@
       <a href="/host" class="text-sm text-slate-600 underline hover:no-underline">Mode animateur</a>
     </header>
 
-    <!-- Join -->
     <div id="join" class="space-y-3 bg-white rounded-2xl shadow p-4">
       <input id="pin" class="w-full border p-3 rounded" placeholder="Code PIN (6 chiffres)" />
       <input id="name" class="w-full border p-3 rounded" placeholder="Votre nom" />
@@ -27,12 +24,10 @@
       <p id="joinMsg" class="text-sm text-red-600"></p>
     </div>
 
-    <!-- Lobby -->
     <div id="lobby" class="hidden mt-8 bg-white rounded-2xl shadow p-4">
       <p class="text-gray-700">Connecté ✅ En attente de la première question…</p>
     </div>
 
-    <!-- Question -->
     <div id="question" class="hidden mt-8 bg-white rounded-2xl shadow p-4">
       <div class="text-sm text-gray-500" id="qProgress"></div>
       <h2 id="qText" class="text-xl font-semibold mb-3"></h2>
@@ -44,15 +39,14 @@
       <p id="answerMsg" class="mt-3 text-sm"></p>
     </div>
 
-    <!-- Result -->
     <div id="result" class="hidden mt-6 bg-white rounded-2xl shadow p-4">
       <h3 class="text-lg font-semibold mb-2">Résultat</h3>
       <p id="correctMsg" class="mb-2"></p>
       <p id="scoreMsg" class="text-gray-700"></p>
       <p id="deltaMsg" class="text-gray-600 text-sm"></p>
+      <div id="feedback" class="mt-3 hidden p-3 rounded bg-emerald-50 border border-emerald-200 text-emerald-900"></div>
     </div>
 
-    <!-- End -->
     <div id="end" class="hidden mt-8 bg-white rounded-2xl shadow p-4">
       <h2 class="text-2xl font-bold mb-2">Quiz terminé!</h2>
       <p class="text-gray-700">Merci d’avoir participé.</p>
@@ -74,35 +68,23 @@
     const qText = $('qText'), qProg = $('qProgress'), qTimer = $('timer'), deadlineEl = $('deadline');
     const answerMsg = $('answerMsg'), resultEl = $('result');
 
-    function fmtMs(ms) {
-      const s = Math.max(0, Math.ceil(ms / 1000));
-      return s + 's';
-    }
-    function loopTimer() {
-      if (!endAt) return;
-      const ms = endAt - Date.now();
-      qTimer.textContent = 'Temps restant : ' + fmtMs(ms);
-      if (ms > 0) rafId = requestAnimationFrame(loopTimer);
-    }
+    function fmtMs(ms){ const s = Math.max(0, Math.ceil(ms/1000)); return s + 's'; }
+    function loopTimer(){ if(!endAt) return; const ms = endAt - Date.now(); qTimer.textContent = 'Temps restant : ' + fmtMs(ms); if(ms>0) rafId = requestAnimationFrame(loopTimer); }
 
-    function lockChoices() {
+    function lockChoices(){
       const btns = optionsEl.querySelectorAll('button');
       btns.forEach((b, idx)=>{
-        b.disabled = true;
-        b.classList.add('opacity-70');
-        if (idx === myChoiceIndex) {
-          b.classList.remove('bg-white','hover:bg-gray-50','border');
-          b.className = 'btn w-full rounded p-3 font-semibold bg-emerald-500 text-white pulse';
-        }
+        b.disabled = true; b.classList.add('opacity-70');
+        if (idx === myChoiceIndex) b.className = 'btn w-full rounded p-3 font-semibold bg-emerald-500 text-white';
       });
     }
 
-    $('joinBtn').onclick = () => {
+    $('joinBtn').onclick = ()=>{
       const pin = $('pin').value.trim();
       const name = $('name').value.trim();
-      if (!pin || !/^\d{6}$/.test(pin)) { $('joinMsg').textContent = 'PIN invalide'; return; }
-      if (!name) { $('joinMsg').textContent = 'Entrez un nom'; return; }
-      $('joinMsg').textContent = '';
+      if(!pin || !/^\d{6}$/.test(pin)) { $('joinMsg').textContent='PIN invalide'; return; }
+      if(!name) { $('joinMsg').textContent='Entrez un nom'; return; }
+      $('joinMsg').textContent='';
       socket.emit('player:join', { roomCode: pin, name });
     };
 
@@ -119,8 +101,7 @@
       qProg.textContent = `Question ${index+1} / ${total}`;
       qText.textContent = question;
       optionsEl.innerHTML = '';
-      hasAnswered = false;
-      myChoiceIndex = null;
+      hasAnswered = false; myChoiceIndex = null;
 
       options.forEach((opt, i) => {
         const btn = document.createElement('button');
@@ -128,12 +109,11 @@
         btn.innerHTML = `<span class="font-semibold mr-2">${'ABCD'[i]}.</span> ${opt}`;
         btn.onclick = () => {
           if (hasAnswered) return;
-          hasAnswered = true;
-          myChoiceIndex = i;
+          hasAnswered = true; myChoiceIndex = i;
           socket.emit('player:answer', { roomCode: currentRoom, choiceIndex: i });
           answerMsg.textContent = 'Réponse enregistrée ✅';
           lockChoices();
-          window.navigator.vibrate?.(50);
+          window.navigator.vibrate?.(40);
         };
         optionsEl.appendChild(btn);
       });
@@ -145,7 +125,7 @@
       answerMsg.textContent = '';
     });
 
-    socket.on('room:reveal', ({ correctIndex, perPlayer }) => {
+    socket.on('room:reveal', ({ correctIndex, perPlayer, explanation }) => {
       const prev = me.score;
       const meStats = perPlayer.find(p => p.name === me.name);
       me.score = meStats?.score ?? me.score;
@@ -155,26 +135,26 @@
       const good = (myChoiceIndex !== null && myChoiceIndex === correctIndex);
       $('correctMsg').textContent = good ? '✅ Bonne réponse !' : '❌ Mauvaise réponse.';
       $('scoreMsg').textContent = `Votre score : ${me.score} pts`;
-      $('deltaMsg').textContent = `+${earned > 0 ? earned : 0} pt${(earned > 1) ? 's' : ''}`;
+      $('deltaMsg').textContent = `+${earned > 0 ? earned : 0} pt${earned>1?'s':''}`;
 
       if (myChoiceIndex !== null && myChoiceIndex !== correctIndex) {
         const btns = optionsEl.querySelectorAll('button');
         const b = btns[myChoiceIndex];
-        if (b) {
-          b.className = 'btn w-full rounded p-3 font-semibold bg-rose-500 text-white';
-        }
+        if (b) b.className = 'btn w-full rounded p-3 font-semibold bg-rose-500 text-white';
+      }
+
+      const fb = document.getElementById('feedback');
+      if (explanation && explanation.trim()) {
+        fb.textContent = explanation.trim();
+        fb.classList.remove('hidden');
+      } else {
+        fb.classList.add('hidden');
+        fb.textContent = '';
       }
     });
 
-    socket.on('room:ended', () => {
-      qEl.classList.add('hidden'); resultEl.classList.add('hidden'); endEl.classList.remove('hidden');
-    });
-
-    socket.on('room:gameOver', ({ leaderboard }) => {
-      qEl.classList.add('hidden');
-      resultEl.classList.add('hidden');
-      endEl.classList.remove('hidden');
-    });
+    socket.on('room:ended', () => { qEl.classList.add('hidden'); resultEl.classList.add('hidden'); endEl.classList.remove('hidden'); });
+    socket.on('room:gameOver', ({ leaderboard }) => { qEl.classList.add('hidden'); resultEl.classList.add('hidden'); endEl.classList.remove('hidden'); });
   </script>
 </body>
 </html>
