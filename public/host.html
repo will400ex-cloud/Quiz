@@ -8,61 +8,85 @@
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="min-h-screen bg-slate-950 text-slate-100">
-  <div class="max-w-5xl mx-auto p-6">
-    <h1 class="text-3xl font-bold mb-4">Tableau de bord</h1>
+  <div class="max-w-6xl mx-auto p-6 space-y-6">
+    <header class="flex items-center justify-between">
+      <h1 class="text-3xl font-bold">Tableau de bord — Animateur</h1>
+      <a href="/" class="text-sm text-slate-300 underline hover:no-underline">Aller à la page joueurs</a>
+    </header>
 
-    <div id="setup" class="grid md:grid-cols-2 gap-6">
-      <div class="bg-slate-900/60 rounded-2xl p-4">
+    <!-- Setup & Imports -->
+    <section class="grid md:grid-cols-2 gap-6">
+      <div class="bg-slate-900/60 rounded-2xl p-4 space-y-3">
         <button id="createRoom" class="w-full bg-emerald-600 hover:bg-emerald-700 rounded p-3 font-semibold">Créer un salon</button>
-        <p class="mt-3 text-sm text-slate-300">PIN : <span id="pin" class="font-mono text-xl"></span></p>
-        <p class="text-sm text-slate-400">Les joueurs se connectent à <span class="font-mono">https://VOTRE_URL/</span> et entrent le PIN.</p>
-        <button id="exportBtn" class="mt-3 w-full bg-teal-600 hover:bg-teal-700 rounded p-3 font-semibold disabled:opacity-50" disabled>Exporter les scores (CSV)</button>
+        <p class="text-sm text-slate-300">PIN : <span id="pin" class="font-mono text-xl"></span></p>
+        <p class="text-sm text-slate-400">Joueurs : ouvrez <span class="font-mono">https://VOTRE_URL/</span> puis entrez le PIN.</p>
+        <div class="grid grid-cols-2 gap-2">
+          <button id="exportBtn" class="bg-teal-600 hover:bg-teal-700 rounded p-3 font-semibold disabled:opacity-50" disabled>Exporter scores (CSV)</button>
+          <button id="resetView" class="bg-slate-800 hover:bg-slate-700 rounded p-3 font-semibold">Réinitialiser affichage</button>
+        </div>
       </div>
-      <div class="bg-slate-900/60 rounded-2xl p-4">
-        <h2 class="font-semibold mb-2">Importer les questions (JSON)</h2>
-        <textarea id="quizJson" rows="10" class="w-full p-2 rounded bg-slate-800 border border-slate-700 font-mono text-sm" placeholder='[{"question":"…","options":["A","B","C","D"],"correctIndex":1,"time":20}]'></textarea>
-        <button id="loadQuiz" class="mt-3 w-full bg-blue-600 hover:bg-blue-700 rounded p-3 font-semibold">Charger le questionnaire</button>
-        <p id="quizStatus" class="text-sm text-slate-300 mt-2"></p>
-        <details class="mt-3">
-          <summary class="cursor-pointer text-slate-300">Exemple</summary>
-<pre class="text-xs whitespace-pre-wrap bg-slate-800 p-2 rounded mt-2">[
-  {"question":"Quel protocole est temps réel déterministe ?","options":["EtherNet/IP","PROFINET IRT","Modbus TCP","IO-Link"],"correctIndex":1,"time":20},
-  {"question":"Couche OSI pour TCP ?","options":["2","3","4","7"],"correctIndex":2,"time":15}
-]</pre>
-        </details>
-      </div>
-    </div>
 
-    <div class="grid md:grid-cols-3 gap-6 mt-6">
       <div class="bg-slate-900/60 rounded-2xl p-4">
+        <h2 class="font-semibold mb-2">Importer les questions</h2>
+        <div class="space-y-2">
+          <label class="block text-sm text-slate-300">Coller du JSON :</label>
+          <textarea id="quizJson" rows="7" class="w-full p-2 rounded bg-slate-800 border border-slate-700 font-mono text-xs" placeholder='[{"question":"…","options":["A","B","C","D"],"correctIndex":1,"time":20}]'></textarea>
+          <button id="loadQuiz" class="w-full bg-blue-600 hover:bg-blue-700 rounded p-3 font-semibold">Charger le JSON</button>
+        </div>
+        <div class="mt-4 space-y-2">
+          <label class="block text-sm text-slate-300">Ou importer un fichier CSV :</label>
+          <input id="csvFile" type="file" accept=".csv" class="block w-full text-sm text-slate-200 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-slate-800 file:text-slate-200 hover:file:bg-slate-700"/>
+          <button id="loadCsv" class="w-full bg-indigo-600 hover:bg-indigo-700 rounded p-3 font-semibold">Charger le CSV</button>
+          <details class="mt-2">
+            <summary class="cursor-pointer text-slate-300">Format CSV attendu (en-têtes)</summary>
+<pre class="text-xs whitespace-pre-wrap bg-slate-800 p-2 rounded mt-2">question,option_a,option_b,option_c,option_d,correct,time
+"Texte de la question","Réponse A","Réponse B","Réponse C","Réponse D","A",20</pre>
+            <p class="text-xs text-slate-400 mt-2">La colonne <code>correct</code> peut être A/B/C/D <em>ou</em> 0/1/2/3. <code>time</code> est optionnelle (secondes).</p>
+          </details>
+        </div>
+        <p id="quizStatus" class="text-sm text-slate-300 mt-2"></p>
+      </div>
+    </section>
+
+    <!-- Current Question -->
+    <section class="bg-slate-900/60 rounded-2xl p-4">
+      <h3 class="font-semibold mb-2">Question en cours</h3>
+      <div id="qtext" class="text-lg mb-3 text-slate-100"></div>
+      <ol id="optlist" class="list-none grid md:grid-cols-2 gap-2"></ol>
+      <p id="correctBadge" class="hidden mt-3 text-emerald-400 font-semibold"></p>
+    </section>
+
+    <!-- Controls + Live responses -->
+    <section class="grid md:grid-cols-3 gap-6">
+      <div class="bg-slate-900/60 rounded-2xl p-4 space-y-2">
         <h3 class="font-semibold mb-2">Contrôles</h3>
         <button id="nextBtn" class="w-full bg-indigo-600 hover:bg-indigo-700 rounded p-3 font-semibold">Question suivante ▶</button>
-        <button id="revealBtn" class="w-full bg-amber-600 hover:bg-amber-700 rounded p-3 font-semibold mt-2">Révéler ✅</button>
+        <button id="revealBtn" class="w-full bg-amber-600 hover:bg-amber-700 rounded p-3 font-semibold">Révéler ✅</button>
+        <p id="liveCounts" class="text-sm text-slate-300 pt-2"></p>
       </div>
 
       <div class="bg-slate-900/60 rounded-2xl p-4 md:col-span-2">
         <h3 class="font-semibold mb-2">Réponses en direct</h3>
-        <div class="grid grid-cols-4 gap-2" id="bars">
-          <!-- bars -->
-        </div>
-        <p id="liveCounts" class="mt-2 text-sm text-slate-300"></p>
+        <div class="grid grid-cols-4 gap-2" id="bars"></div>
       </div>
-    </div>
+    </section>
 
-    <div class="bg-slate-900/60 rounded-2xl p-4 mt-6">
+    <!-- Leaderboard -->
+    <section class="bg-slate-900/60 rounded-2xl p-4">
       <h3 class="font-semibold mb-2">Classement</h3>
       <ol id="board" class="list-decimal pl-6 space-y-1 text-slate-200"></ol>
-    </div>
+    </section>
   </div>
 
   <script>
     const socket = io();
     let roomCode = null;
-    let quizLoaded = 0;
+    let currentQ = { question: '', options: [] };
 
     const $ = id => document.getElementById(id);
     const bars = $('bars');
 
+    // --- UI helpers ---
     function renderBars(responses = [0,0,0,0]) {
       bars.innerHTML = '';
       const total = responses.reduce((a,b)=>a+b,0) || 1;
@@ -74,8 +98,10 @@
         fill.className = 'bg-indigo-500 mt-auto';
         fill.style.height = pct + '%';
         const label = document.createElement('div');
-        label.className = 'p-2 text-center text-slate-300';
-        label.textContent = 'ABCD'[i] + ` (${v})`;
+        label.className = 'p-2 text-center text-slate-300 text-sm';
+        const opt = (currentQ.options?.[i] || '').trim();
+        const excerpt = opt.length > 28 ? opt.slice(0,28) + '…' : opt;
+        label.textContent = `${'ABCD'[i]} (${v})${opt ? ' — ' + excerpt : ''}`;
         col.appendChild(fill);
         col.appendChild(label);
         bars.appendChild(col);
@@ -83,7 +109,73 @@
       $('liveCounts').textContent = `Total réponses : ${responses.reduce((a,b)=>a+b,0)}`;
     }
 
+    function parseCSVToQuiz(csvText) {
+      // Minimal CSV parser with quotes
+      const rows = [];
+      let i = 0, field = '', row = [], inQuotes = false;
+      const pushField = () => { row.push(field); field=''; };
+      const pushRow = () => { rows.push(row); row=[]; };
+      while (i < csvText.length) {
+        const c = csvText[i];
+        if (inQuotes) {
+          if (c === '"') {
+            if (csvText[i+1] === '"') { field += '"'; i++; } else { inQuotes = false; }
+          } else { field += c; }
+        } else {
+          if (c === '"') { inQuotes = true; }
+          else if (c === ',') { pushField(); }
+          else if (c === '\n') { pushField(); pushRow(); }
+          else if (c === '\r') { /* ignore */ }
+          else { field += c; }
+        }
+        i++;
+      }
+      if (field.length || row.length) { pushField(); pushRow(); }
+      while (rows.length && rows[rows.length-1].every(v=>v.trim()==='')) rows.pop();
+      if (!rows.length) return [];
+
+      const headers = rows[0].map(h => h.trim().toLowerCase());
+      const idx = {
+        question: headers.indexOf('question'),
+        a: headers.indexOf('option_a'),
+        b: headers.indexOf('option_b'),
+        c: headers.indexOf('option_c'),
+        d: headers.indexOf('option_d'),
+        correct: headers.indexOf('correct'),
+        time: headers.indexOf('time')
+      };
+      if ([idx.question, idx.a, idx.b, idx.c, idx.d, idx.correct].some(v => v === -1)) {
+        throw new Error('En-têtes requis: question, option_a, option_b, option_c, option_d, correct[, time]');
+      }
+
+      const quiz = [];
+      for (let r = 1; r < rows.length; r++) {
+        const cols = rows[r];
+        const q = (cols[idx.question] || '').trim();
+        const opts = [cols[idx.a], cols[idx.b], cols[idx.c], cols[idx.d]].map(v => (v || '').trim());
+        if (!q || opts.some(o=>!o)) continue;
+        let correctRaw = (cols[idx.correct] || '').trim();
+        let correctIndex = -1;
+        if (/^[0-3]$/.test(correctRaw)) correctIndex = parseInt(correctRaw,10);
+        else {
+          const letter = correctRaw.toUpperCase();
+          const map = {A:0,B:1,C:2,D:3};
+          correctIndex = map[letter];
+        }
+        if (correctIndex == null || correctIndex < 0 || correctIndex > 3) continue;
+        let time = 20;
+        if (idx.time !== -1) {
+          const t = parseInt((cols[idx.time]||'').trim(), 10);
+          if (!isNaN(t) && t > 0) time = t;
+        }
+        quiz.push({ question: q, options: opts, correctIndex, time });
+      }
+      return quiz;
+    }
+
+    // --- Buttons ---
     $('createRoom').onclick = () => socket.emit('host:createRoom');
+
     $('loadQuiz').onclick = () => {
       if (!roomCode) { alert('Crée d’abord un salon.'); return; }
       try {
@@ -94,6 +186,21 @@
         $('quizStatus').textContent = 'JSON invalide.';
       }
     };
+
+    $('loadCsv').onclick = async () => {
+      if (!roomCode) { alert('Crée d’abord un salon.'); return; }
+      const file = $('csvFile').files[0];
+      if (!file) { $('quizStatus').textContent = 'Choisissez un fichier CSV.'; return; }
+      const text = await file.text();
+      try {
+        const quiz = parseCSVToQuiz(text);
+        if (!quiz.length) throw new Error('CSV vide ou mal formé');
+        socket.emit('host:loadQuiz', { roomCode, quiz });
+      } catch (e) {
+        $('quizStatus').textContent = 'Erreur CSV : ' + e.message;
+      }
+    };
+
     $('nextBtn').onclick = () => roomCode && socket.emit('host:nextQuestion', { roomCode });
     $('revealBtn').onclick = () => roomCode && socket.emit('host:reveal', { roomCode });
 
@@ -107,25 +214,61 @@
       a.remove();
     };
 
-    socket.on('host:roomCreated', (pin) => { 
-      roomCode = pin; 
-      $('pin').textContent = pin; 
+    $('resetView').onclick = () => {
+      currentQ = { question: '', options: [] };
+      $('qtext').textContent = '';
+      $('optlist').innerHTML = '';
+      $('correctBadge').classList.add('hidden');
+      $('correctBadge').textContent = '';
+      renderBars([0,0,0,0]);
+      $('board').innerHTML = '';
+      $('quizStatus').textContent = '';
+    };
+
+    // --- Socket events ---
+    socket.on('host:roomCreated', (pin) => {
+      roomCode = pin;
+      $('pin').textContent = pin;
       $('exportBtn').disabled = false;
+      $('quizStatus').textContent = 'Salon créé. Chargez un JSON ou un CSV pour commencer.';
     });
 
     socket.on('room:quizLoaded', ({ count }) => {
-      quizLoaded = count;
       $('quizStatus').textContent = `Questionnaire chargé (${count} questions).`;
     });
 
     socket.on('room:liveResponses', ({ responses }) => renderBars(responses));
-    socket.on('room:question', () => renderBars([0,0,0,0]));
+
+    socket.on('room:question', ({ index, total, question, options }) => {
+      currentQ = { question, options };
+      $('qtext').textContent = `Q${index+1}/${total} — ${question}`;
+      $('optlist').innerHTML = options.map((opt, i) => `
+        <li id="opt${i}" class="px-3 py-2 rounded bg-slate-800/70 border border-slate-700">
+          <span class="font-semibold text-slate-200 mr-2">${'ABCD'[i]}.</span>
+          <span class="text-slate-200">${opt}</span>
+        </li>
+      `).join('');
+      $('correctBadge').classList.add('hidden');
+      $('correctBadge').textContent = '';
+      renderBars([0,0,0,0]);
+    });
 
     socket.on('room:reveal', ({ correctIndex, leaderboard }) => {
-      Array.from(bars.children).forEach((col, i) => {
+      for (let i = 0; i < 4; i++) {
+        const li = document.getElementById('opt' + i);
+        if (!li) continue;
+        li.classList.remove('ring-2','ring-emerald-400','border-emerald-500');
+        if (i === correctIndex) {
+          li.classList.add('ring-2','ring-emerald-400','border-emerald-500');
+        }
+      }
+      const barsEl = $('bars');
+      Array.from(barsEl.children).forEach((col, i) => {
         col.classList.remove('ring-2','ring-emerald-400');
         if (i === correctIndex) col.classList.add('ring-2','ring-emerald-400');
       });
+      $('correctBadge').textContent = `Bonne réponse : ${'ABCD'[correctIndex]} — ${currentQ.options?.[correctIndex] || ''}`;
+      $('correctBadge').classList.remove('hidden');
       $('board').innerHTML = leaderboard
         .map((p)=>`<li><span class="font-semibold">${p.name}</span> — ${p.score} pts</li>`)
         .join('');
@@ -137,8 +280,6 @@
         .join('');
       alert('Quiz terminé !');
     });
-
-    renderBars([0,0,0,0]);
   </script>
 </body>
 </html>
