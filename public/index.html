@@ -38,10 +38,8 @@
     <div id="end" class="hidden mt-8 bg-white rounded-2xl shadow p-4"><h2 class="text-2xl font-bold mb-2">Quiz terminé!</h2><p class="text-gray-700">Merci d’avoir participé.</p></div>
   </div>
   <script>
-    const socket = io();
-    let currentRoom=null; let me={name:null,score:0}; let endAt=null; let rafId=null; let hasAnswered=false; let myChoiceIndex=null;
-    const $=(id)=>document.getElementById(id); const joinEl=$('join'),lobbyEl=$('lobby'),qEl=$('question'),endEl=$('end');
-    const optionsEl=$('options'); const qText=$('qText'), qProg=$('qProgress'), qTimer=$('timer'), deadlineEl=$('deadline'); const answerMsg=$('answerMsg'), resultEl=$('result');
+    const socket=io(); let currentRoom=null; let me={name:null,score:0}; let endAt=null; let rafId=null; let hasAnswered=false; let myChoiceIndex=null;
+    const $=(id)=>document.getElementById(id); const joinEl=$('join'),lobbyEl=$('lobby'),qEl=$('question'),endEl=$('end'); const optionsEl=$('options'); const qText=$('qText'),qProg=$('qProgress'),qTimer=$('timer'),deadlineEl=$('deadline'); const answerMsg=$('answerMsg'),resultEl=$('result');
     function fmtMs(ms){ const s=Math.max(0,Math.ceil(ms/1000)); return s+'s'; }
     function loopTimer(){ if(!endAt) return; const ms=endAt-Date.now(); qTimer.textContent='Temps restant : '+fmtMs(ms); if(ms>0) rafId=requestAnimationFrame(loopTimer); }
     function lockChoices(){ const btns=optionsEl.querySelectorAll('button'); btns.forEach((b,idx)=>{ b.disabled=true; b.classList.add('opacity-70'); if(idx===myChoiceIndex) b.className='btn w-full rounded p-3 font-semibold bg-emerald-500 text-white'; }); }

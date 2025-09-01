@@ -3,79 +3,80 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Quiz Live — Animateur (Focus)</title>
+  <title>Quiz Live — Animateur (Auto-Reveal)</title>
   <script src="/socket.io/socket.io.js"></script>
   <script src="https://cdn.tailwindcss.com"></script>
+  <style>.pin-badge { letter-spacing: .15em; }</style>
 </head>
 <body class="min-h-screen bg-slate-950 text-slate-100">
   <div class="max-w-7xl mx-auto p-4 md:p-6 space-y-4">
-    <header class="flex items-center justify-between gap-3">
+    <header class="flex items-center justify-between gap-4">
       <div class="flex items-center gap-3">
-        <button id="createRoom" class="bg-emerald-600 hover:bg-emerald-700 rounded px-4 py-2 font-semibold">Créer un salon</button>
-        <button id="loadBtn" class="bg-blue-600 hover:bg-blue-700 rounded px-4 py-2 font-semibold">Charger JSON/CSV</button>
+        <img src="/images/logo_cegep.png" alt="Logo Cégep" class="h-10 w-auto object-contain" onerror="this.style.display='none'">
+        <img src="/images/logo_tge.png" alt="Logo TGÉ" class="h-10 w-auto object-contain" onerror="this.style.display='none'">
       </div>
-      <div class="text-sm text-slate-300">PIN: <span id="pin" class="font-mono text-xl"></span></div>
+      <div class="text-center">
+        <div class="text-xs text-slate-300">Code PIN</div>
+        <div id="pin" class="pin-badge inline-block bg-yellow-400 text-slate-900 rounded-2xl px-6 py-2 text-3xl font-extrabold shadow"></div>
+        <button id="copyPin" class="ml-2 text-xs bg-slate-800 hover:bg-slate-700 rounded px-2 py-1 border border-slate-600">Copier</button>
+      </div>
+      <div class="text-right">
+        <div class="text-xs text-slate-400">Joueurs connectés</div>
+        <div id="livePlayers" class="text-2xl font-mono">0</div>
+      </div>
     </header>
 
-    <main class="grid grid-rows-[auto_auto_1fr] gap-4">
-      <section class="grid md:grid-cols-4 gap-4">
-        <div class="bg-slate-900/60 rounded-2xl p-4 flex flex-col gap-2">
-          <h2 class="font-semibold">Contrôles</h2>
-          <button id="nextBtn" class="w-full bg-indigo-600 hover:bg-indigo-700 rounded p-3 font-semibold">Question suivante ▶</button>
-          <button id="revealBtn" class="w-full bg-amber-600 hover:bg-amber-700 rounded p-3 font-semibold">Révéler ✅</button>
-          <button id="exportBtn" class="w-full bg-teal-600 hover:bg-teal-700 rounded p-3 font-semibold disabled:opacity-50" disabled>Exporter scores (CSV)</button>
-        </div>
-        <div class="bg-slate-900/60 rounded-2xl p-4 flex flex-col gap-2 md:col-span-2">
-          <h2 class="font-semibold">Statut de la question</h2>
-          <div class="flex items-center justify-between">
-            <div>
-              <div class="text-sm">Participants : <span id="playersCount" class="font-semibold">0</span></div>
-              <div class="text-sm">Réponses reçues : <span id="answeredCount" class="font-semibold">0</span></div>
-            </div>
-            <div class="text-right">
-              <div class="text-sm">Temps restant</div>
-              <div id="timer" class="text-2xl font-mono">--s</div>
-              <div id="deadline" class="text-xs text-slate-400"></div>
-            </div>
-          </div>
-          <div id="progressBar" class="h-2 bg-slate-800 rounded overflow-hidden">
-            <div id="progressFill" class="h-2 bg-indigo-500" style="width:0%"></div>
-          </div>
-        </div>
-        <div class="bg-slate-900/60 rounded-2xl p-4">
-          <h2 class="font-semibold">Import</h2>
-          <textarea id="quizJson" rows="4" class="w-full p-2 rounded bg-slate-800 border border-slate-700 font-mono text-xs" placeholder='[{"question":"…","options":["A","B","C","D"],"correctIndex":1,"time":20,"explanation":"Indice..."}]'></textarea>
-          <div class="flex items-center gap-2 mt-2">
-            <input id="csvFile" type="file" accept=".csv" class="text-xs" />
-            <button id="loadQuiz" class="bg-blue-600 hover:bg-blue-700 rounded px-3 py-2 text-sm font-semibold">Charger</button>
-          </div>
-          <p id="quizStatus" class="text-xs text-slate-300 mt-2"></p>
-        </div>
-      </section>
-
-      <section class="bg-slate-900/60 rounded-2xl p-4">
-        <div class="flex items-start justify-between gap-4">
+    <section class="grid md:grid-cols-4 gap-4">
+      <div class="bg-slate-900/60 rounded-2xl p-4 flex flex-col gap-2">
+        <h2 class="font-semibold">Contrôles</h2>
+        <button id="createRoom" class="w-full bg-emerald-600 hover:bg-emerald-700 rounded p-3 font-semibold">Créer un salon</button>
+        <button id="nextBtn" class="w-full bg-indigo-600 hover:bg-indigo-700 rounded p-3 font-semibold">Question suivante ▶</button>
+        <button id="revealBtn" class="w-full bg-amber-600 hover:bg-amber-700 rounded p-3 font-semibold">Révéler (manuel) ✅</button>
+        <button id="exportBtn" class="w-full bg-teal-600 hover:bg-teal-700 rounded p-3 font-semibold disabled:opacity-50" disabled>Exporter scores (CSV)</button>
+      </div>
+      <div class="bg-slate-900/60 rounded-2xl p-4 flex flex-col gap-2 md:col-span-3">
+        <h2 class="font-semibold">Statut de la question</h2>
+        <div class="flex items-center justify-between">
           <div>
-            <h3 class="font-semibold mb-2">Question en cours</h3>
-            <div id="qtext" class="text-xl mb-2 text-slate-100"></div>
-            <ol id="optlist" class="list-none grid md:grid-cols-2 gap-2"></ol>
-            <p id="explaBadge" class="hidden mt-3 text-slate-300 italic"></p>
+            <div class="text-sm">Participants : <span id="playersCount" class="font-semibold">0</span></div>
+            <div class="text-sm">Réponses reçues : <span id="answeredCount" class="font-semibold">0</span></div>
           </div>
-          <div class="text-right"><div id="qProgress" class="text-sm text-slate-300"></div></div>
+          <div class="text-right">
+            <div class="text-sm">Temps restant</div>
+            <div id="timer" class="text-2xl font-mono">--s</div>
+            <div id="deadline" class="text-xs text-slate-400"></div>
+          </div>
         </div>
-      </section>
+        <div id="progressBar" class="h-2 bg-slate-800 rounded overflow-hidden">
+          <div id="progressFill" class="h-2 bg-indigo-500" style="width:0%"></div>
+        </div>
+      </div>
+    </section>
 
-      <section class="bg-slate-900/60 rounded-2xl p-4">
-        <h3 class="font-semibold mb-2">Réponses</h3>
-        <div id="liveOnly" class="text-slate-200">
-          <p class="text-lg">Réponses reçues : <span id="answeredOnly" class="font-mono">0</span> / <span id="playersOnly" class="font-mono">0</span></p>
+    <section class="bg-slate-900/60 rounded-2xl p-4">
+      <div class="flex items-start justify-between gap-4">
+        <div>
+          <h3 class="font-semibold mb-2">Question en cours</h3>
+          <div id="qtext" class="text-xl mb-2 text-slate-100"></div>
+          <ol id="optlist" class="list-none grid md:grid-cols-2 gap-2"></ol>
+          <p id="explaBadge" class="hidden mt-3 text-slate-300 italic"></p>
         </div>
-        <div id="afterReveal" class="hidden">
-          <div class="grid grid-cols-4 gap-3" id="countGrid"></div>
-          <p id="correctMsg" class="mt-3 text-emerald-400 font-semibold"></p>
+        <div class="text-right">
+          <div id="qProgress" class="text-sm text-slate-300"></div>
         </div>
-      </section>
-    </main>
+      </div>
+    </section>
+
+    <section class="bg-slate-900/60 rounded-2xl p-4">
+      <h3 class="font-semibold mb-2">Réponses</h3>
+      <div id="liveOnly" class="text-slate-200">
+        <p class="text-lg">Réponses reçues : <span id="answeredOnly" class="font-mono">0</span> / <span id="playersOnly" class="font-mono">0</span></p>
+      </div>
+      <div id="afterReveal" class="hidden">
+        <div class="grid grid-cols-4 gap-3" id="countGrid"></div>
+        <p id="correctMsg" class="mt-3 text-emerald-400 font-semibold"></p>
+      </div>
+    </section>
   </div>
 
   <script>
@@ -97,6 +98,7 @@
     const afterReveal = $('afterReveal');
     const liveOnly = $('liveOnly');
     const countGrid = $('countGrid');
+    const livePlayers = $('livePlayers');
 
     function fmtMs(ms){ const s = Math.max(0, Math.ceil(ms/1000)); return s + 's'; }
     function loopTimer(){
@@ -115,38 +117,21 @@
       answeredCount.textContent = totals.answered ?? 0;
       playersOnly.textContent = totals.players ?? 0;
       answeredOnly.textContent = totals.answered ?? 0;
+      livePlayers.textContent = totals.players ?? 0;
     }
 
-    // buttons
+    // Buttons
     $('createRoom').onclick = () => socket.emit('host:createRoom');
     $('nextBtn').onclick = () => roomCode && socket.emit('host:nextQuestion', { roomCode });
     $('revealBtn').onclick = () => roomCode && socket.emit('host:reveal', { roomCode });
-    $('exportBtn').onclick = () => {
-      if (!roomCode) return;
-      const a = document.createElement('a');
-      a.href = `/export/${roomCode}`;
-      a.download = `scores_${roomCode}.csv`;
-      document.body.appendChild(a); a.click(); a.remove();
-    };
-    $('loadBtn').onclick = () => { window.scrollTo({ top: 0, behavior: 'smooth' }); $('quizJson').focus(); };
-    $('loadQuiz').onclick = async () => {
-      if (!roomCode) { alert('Crée d’abord un salon.'); return; }
-      const csvInput = $('csvFile').files[0];
-      if (csvInput) {
-        const text = await csvInput.text();
-        try {
-          const quiz = parseCSVToQuiz(text);
-          if (!quiz.length) throw new Error('CSV vide/mal formé');
-          socket.emit('host:loadQuiz', { roomCode, quiz });
-        } catch(e){ $('quizStatus').textContent = 'Erreur CSV : ' + e.message; }
-      } else {
-        try {
-          const quiz = JSON.parse($('quizJson').value);
-          socket.emit('host:loadQuiz', { roomCode, quiz });
-        } catch(e){ $('quizStatus').textContent = 'JSON invalide.'; }
-      }
+    $('exportBtn').onclick = () => { if (!roomCode) return; const a=document.createElement('a'); a.href=`/export/${roomCode}`; a.download=`scores_${roomCode}.csv`; document.body.appendChild(a); a.click(); a.remove(); };
+    $('copyPin').onclick = async () => {
+      const text = $('pin').textContent.trim();
+      if (!text) return;
+      try { await navigator.clipboard.writeText(text); $('copyPin').textContent = 'Copié !'; setTimeout(()=> $('copyPin').textContent='Copier', 1500); } catch {}
     };
 
+    // Import helpers
     function parseCSVToQuiz(csvText){
       const rows=[]; let i=0, field='', row=[], inQuotes=false;
       const pushField=()=>{ row.push(field); field=''; };
@@ -171,7 +156,7 @@
       const headers = rows[0].map(h=>h.trim().toLowerCase());
       const idx = {question:headers.indexOf('question'),a:headers.indexOf('option_a'),b:headers.indexOf('option_b'),c:headers.indexOf('option_c'),d:headers.indexOf('option_d'),correct:headers.indexOf('correct'),time:headers.indexOf('time'),explanation:headers.indexOf('explanation')};
       if ([idx.question, idx.a, idx.b, idx.c, idx.d, idx.correct].some(v=>v===-1)) throw new Error('En-têtes requis: question, option_a, option_b, option_c, option_d, correct[, time, explanation]');
-      const quiz = [];
+      const quiz=[];
       for (let r=1;r<rows.length;r++){
         const cols = rows[r];
         const q = (cols[idx.question]||'').trim();
@@ -187,17 +172,48 @@
       }
       return quiz;
     }
+    document.addEventListener('click', (e)=>{
+      if (e.target && e.target.id === 'loadQuiz') {
+        (async ()=>{
+          if (!roomCode) { alert('Crée d’abord un salon.'); return; }
+          const csvInput = document.getElementById('csvFile')?.files?.[0];
+          if (csvInput) {
+            const text = await csvInput.text();
+            try {
+              const quiz = parseCSVToQuiz(text);
+              if (!quiz.length) throw new Error('CSV vide/mal formé');
+              socket.emit('host:loadQuiz', { roomCode, quiz });
+            } catch(err){ document.getElementById('quizStatus').textContent = 'Erreur CSV : ' + err.message; }
+          } else {
+            try {
+              const raw = document.getElementById('quizJson').value;
+              const quiz = JSON.parse(raw);
+              socket.emit('host:loadQuiz', { roomCode, quiz });
+            } catch(err){ document.getElementById('quizStatus').textContent = 'JSON invalide.'; }
+          }
+        })();
+      }
+    });
 
-    // sockets
-    socket.on('host:roomCreated', (pin) => { roomCode = pin; document.getElementById('pin').textContent = pin; document.getElementById('exportBtn').disabled = false; document.getElementById('quizStatus').textContent = 'Salon créé — chargez un JSON ou un CSV.'; });
-    socket.on('room:quizLoaded', ({ count }) => { document.getElementById('quizStatus').textContent = `Questionnaire chargé (${count} questions).`; });
-
+    // Socket events
+    socket.on('host:roomCreated', (pin) => {
+      roomCode = pin;
+      $('pin').textContent = pin;
+      $('exportBtn').disabled = false;
+    });
+    socket.on('host:players', (players) => {
+      livePlayers.textContent = players.length;
+      playersCount.textContent = players.length;
+      playersOnly.textContent = players.length;
+    });
+    socket.on('room:quizLoaded', ({ count }) => {
+      document.getElementById('quizStatus').textContent = `Questionnaire chargé (${count} questions).`;
+    });
     socket.on('host:status', ({ totals, accepting: isAccepting, endAt: e }) => {
       accepting = !!isAccepting; if (e) endAt = e;
       setCounts(totals);
       if (accepting) { if (rafId) cancelAnimationFrame(rafId); rafId = requestAnimationFrame(loopTimer); liveOnly.classList.remove('hidden'); afterReveal.classList.add('hidden'); }
     });
-
     socket.on('room:question', ({ index, total, question, options, time, endAt: e, totals }) => {
       currentQ = { question, options, time: (time||20)*1000 };
       document.getElementById('qtext').textContent = `Q${index+1}/${total} — ${question}`;
@@ -211,13 +227,11 @@
       if (rafId) cancelAnimationFrame(rafId); rafId = requestAnimationFrame(loopTimer);
       liveOnly.classList.remove('hidden'); afterReveal.classList.add('hidden'); document.getElementById('countGrid').innerHTML = ''; document.getElementById('correctMsg').textContent=''; document.getElementById('explaBadge').classList.add('hidden'); document.getElementById('explaBadge').textContent='';
     });
-
     socket.on('room:reveal', ({ correctIndex, explanation }) => {
       accepting = false; if (rafId) cancelAnimationFrame(rafId);
       for (let i=0;i<4;i++){ const li = document.getElementById('opt'+i); if (li){ li.classList.remove('ring-2','ring-emerald-400','border-emerald-500'); if (i===correctIndex) li.classList.add('ring-2','ring-emerald-400','border-emerald-500'); } }
       if (explanation && explanation.trim()){ const e = document.getElementById('explaBadge'); e.textContent = explanation.trim(); e.classList.remove('hidden'); }
     });
-
     socket.on('host:counts', ({ counts, correctIndex, totals }) => {
       setCounts(totals);
       liveOnly.classList.add('hidden'); afterReveal.classList.remove('hidden');
@@ -229,5 +243,18 @@
       document.getElementById('correctMsg').textContent = `Bonne réponse : ${'ABCD'[correctIndex]}`;
     });
   </script>
+
+  <div class="max-w-7xl mx-auto p-4 md:p-6">
+    <section class="bg-slate-900/60 rounded-2xl p-4">
+      <h2 class="font-semibold mb-2">Importer des questions</h2>
+      <p class="text-sm text-slate-300 mb-2">Collez du JSON ou chargez un CSV (en-têtes : question, option_a, option_b, option_c, option_d, correct[, time, explanation]).</p>
+      <textarea id="quizJson" rows="6" class="w-full p-2 rounded bg-slate-800 border border-slate-700 font-mono text-xs" placeholder='[{"question":"…","options":["A","B","C","D"],"correctIndex":1,"time":20,"explanation":"Indice..."}]'></textarea>
+      <div class="flex items-center gap-2 mt-2">
+        <input id="csvFile" type="file" accept=".csv" class="text-xs" />
+        <button id="loadQuiz" class="bg-blue-600 hover:bg-blue-700 rounded px-3 py-2 text-sm font-semibold">Charger</button>
+      </div>
+      <p id="quizStatus" class="text-xs text-slate-300 mt-2"></p>
+    </section>
+  </div>
 </body>
 </html>
