@@ -1,4 +1,4 @@
-// server.js — Auto-reveal, live players counter, persistent PIN
+// server.js — Auto-reveal + Courses API + Pale logo strip support
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
@@ -9,15 +9,46 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: '*' } });
 
-app.use(express.static('public'));
-app.get('/host', (req, res) => res.sendFile(path.join(__dirname, 'public', 'host.html')));
+const PUBLIC_DIR = path.join(__dirname, 'public');
 
+app.use(express.static('public'));
+app.get('/host', (req, res) => res.sendFile(path.join(PUBLIC_DIR, 'host.html')));
+
+// ---- API: list courses and csv files ----
+function listDirs(dir){
+  try {
+    return fs.readdirSync(dir, { withFileTypes: true })
+      .filter(d => d.isDirectory())
+      .map(d => d.name)
+      .sort();
+  } catch { return []; }
+}
+function listCsvs(dir){
+  try {
+    return fs.readdirSync(dir, { withFileTypes: true })
+      .filter(d => d.isFile() && d.name.toLowerCase().endsWith('.csv'))
+      .map(d => d.name)
+      .sort();
+  } catch { return []; }
+}
+app.get('/api/courses', (req, res) => {
+  const base = path.join(PUBLIC_DIR, 'courses');
+  return res.json({ courses: listDirs(base) });
+});
+app.get('/api/courses/:course/files', (req, res) => {
+  const course = req.params.course.replace(/[^a-zA-Z0-9_\-]/g, '');
+  const dir = path.join(PUBLIC_DIR, 'courses', course);
+  if (!dir.startsWith(path.join(PUBLIC_DIR, 'courses'))) return res.status(400).json({ error: 'Chemin invalide' });
+  return res.json({ files: listCsvs(dir) });
+});
+
+// ---- Quiz game state ----
 const rooms = new Map(); // roomCode -> state
 
 function newRoomState() {
   return {
     hostId: null,
-    players: new Map(),
+    players: new Map(), // socket.id -> {name, score, answeredAt, lastCorrect, choiceIndex}
     pin: null,
     quiz: [],
     currentIndex: -1,
