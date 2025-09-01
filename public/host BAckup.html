@@ -63,9 +63,8 @@
             <label class="text-xs text-slate-400">Fichier CSV</label>
             <select id="fileSelect" class="w-full bg-slate-800 border border-slate-700 rounded p-2"></select>
           </div>
-          <div class="col-span-1 flex items-end gap-2">
+          <div class="col-span-1 flex items-end">
             <button id="loadCourseCsv" class="w-full bg-blue-600 hover:bg-blue-700 rounded p-3 font-semibold">Charger ce CSV</button>
-            <button id="resetImport" class="w-32 bg-slate-700 hover:bg-slate-600 rounded p-3 font-semibold">Réinitialiser</button>
           </div>
         </div>
         <p id="courseMsg" class="text-xs text-slate-300"></p>
@@ -135,17 +134,6 @@
     const courseSelect = $('courseSelect');
     const fileSelect = $('fileSelect');
     const courseMsg = $('courseMsg');
-    let quizLoadedOk = false;
-    const nextBtn = $('nextBtn');
-
-    function setNextEnabled(on) {
-      if (!nextBtn) return;
-      nextBtn.disabled = !on;
-      if (on) { nextBtn.classList.remove('opacity-50','cursor-not-allowed'); }
-      else { nextBtn.classList.add('opacity-50','cursor-not-allowed'); }
-    }
-    setNextEnabled(false);
-
 
     function fmtMs(ms){ const s = Math.max(0, Math.ceil(ms/1000)); return s + 's'; }
     function loopTimer(){
@@ -169,7 +157,7 @@
 
     // Buttons
     $('createRoom').onclick = () => socket.emit('host:createRoom');
-    $('nextBtn').onclick = () => { if (!roomCode || !quizLoadedOk) return; socket.emit('host:nextQuestion', { roomCode }); };
+    $('nextBtn').onclick = () => roomCode && socket.emit('host:nextQuestion', { roomCode });
     $('revealBtn').onclick = () => roomCode && socket.emit('host:reveal', { roomCode });
     $('exportBtn').onclick = () => { if (!roomCode) return; const a=document.createElement('a'); a.href=`/export/${roomCode}`; a.download=`scores_${roomCode}.csv`; document.body.appendChild(a); a.click(); a.remove(); };
     $('copyPin').onclick = async () => {
@@ -224,12 +212,10 @@
       const csvInput = document.getElementById('csvFile')?.files?.[0];
       if (csvInput) {
         const text = await csvInput.text();
-        try { const quiz = parseCSVToQuiz(text); if (!quiz.length) throw new Error('CSV vide/mal formé'); socket.emit('host:loadQuiz', { roomCode, quiz });
-          quizLoadedOk = true; setNextEnabled(true); }
+        try { const quiz = parseCSVToQuiz(text); if (!quiz.length) throw new Error('CSV vide/mal formé'); socket.emit('host:loadQuiz', { roomCode, quiz }); }
         catch(e){ document.getElementById('quizStatus').textContent = 'Erreur CSV : ' + e.message; }
       } else {
-        try { const raw = document.getElementById('quizJson').value; const quiz = JSON.parse(raw); socket.emit('host:loadQuiz', { roomCode, quiz });
-          quizLoadedOk = true; setNextEnabled(true); }
+        try { const raw = document.getElementById('quizJson').value; const quiz = JSON.parse(raw); socket.emit('host:loadQuiz', { roomCode, quiz }); }
         catch(e){ document.getElementById('quizStatus').textContent = 'JSON invalide.'; }
       }
     };
@@ -256,8 +242,6 @@
     }
     courseSelect.addEventListener('change', refreshFiles);
     document.getElementById('loadCourseCsv').onclick = async () => {
-      setNextEnabled(false);
-      quizLoadedOk = false;
       if (!roomCode) { alert('Crée d’abord un salon.'); return; }
       const course = courseSelect.value; const file = fileSelect.value;
       if (!course || !file) { courseMsg.textContent = 'Sélectionnez un cours et un CSV.'; return; }
@@ -267,22 +251,8 @@
         const quiz = parseCSVToQuiz(text);
         if (!quiz.length) throw new Error('CSV vide/mal formé');
         socket.emit('host:loadQuiz', { roomCode, quiz });
-          quizLoadedOk = true; setNextEnabled(true);
         courseMsg.textContent = `Chargé: ${course}/${file} (${quiz.length} questions)`;
-        quizLoadedOk = true;
-        setNextEnabled(true);
-      } catch(e){ courseMsg.textContent = 'Erreur chargement CSV: '+e.message + ' — choisissez un autre fichier ou réessayez.';
-        try { await refreshFiles(); } catch(_) {}
-        setNextEnabled(false);
-        quizLoadedOk = false;
-      }
-    };
-
-    document.getElementById('resetImport').onclick = async () => {
-      courseMsg.textContent = '';
-      try { await refreshCourses(); } catch(_) {}
-      setNextEnabled(false);
-      quizLoadedOk = false;
+      } catch(e){ courseMsg.textContent = 'Erreur chargement CSV: '+e.message; }
     };
 
     // Socket events
@@ -299,13 +269,7 @@
       playersOnly.textContent = players.length;
     });
     socket.on('room:quizLoaded', ({ count }) => {
-      if (typeof count === 'number' && count > 0) {
-        document.getElementById('quizStatus').textContent = `Questionnaire chargé (${count} questions).`;
-        quizLoadedOk = true; setNextEnabled(true);
-      } else {
-        document.getElementById('quizStatus').textContent = `Chargement échoué ou vide (${count} question).`;
-        quizLoadedOk = false; setNextEnabled(false);
-      }
+      document.getElementById('quizStatus').textContent = `Questionnaire chargé (${count} questions).`;
     });
     socket.on('host:status', ({ totals, accepting: isAccepting, endAt: e }) => {
       accepting = !!isAccepting; if (e) endAt = e;
