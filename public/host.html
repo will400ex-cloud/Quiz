@@ -73,7 +73,7 @@
           </div>
         </div>
         <p id="courseMsg" class="text-xs text-slate-300"></p>
-<div id="csvDiag" class="text-[11px] text-slate-400 mt-1"></div>
+
       </div>
     </section>
 
@@ -151,20 +151,7 @@
         try { return new TextDecoder('utf-16be').decode(bytes); } catch {}
       }
       return new TextDecoder('utf-8').decode(bytes);
-    }
-
-    
-    // ---- Diagnostics helper (avoid re-declaring variables) ----
-    function updateDiag(){
-      var el = document.getElementById('csvDiag');
-      if (!el) return;
-      var sep = (window.__csvLastDelimiter || ',');
-      var fb  = (window.__csvFallbackUsed ? 'oui' : 'non');
-      var hdr = (window.__csvDiagHeaders || []).join(', ');
-      el.textContent = "Séparateur: " + sep + " | Fallback: " + fb + " | En-têtes détectés: " + hdr;
-    }
-
-    // ---- Socket & état ----
+    }// ---- Socket & état ----
     const socket = io();
     const $ = (id) => document.getElementById(id);
 
@@ -366,8 +353,8 @@
         const text = await decodeFileText(csvInput);
         try {
           const quiz = parseCSVToQuiz(text);
-        updateDiag();
-          updateDiag();
+        
+          
         const delim = (window.__csvLastDelimiter || ',');
           socket.emit('host:loadQuiz', { roomCode, quiz });
           document.getElementById('quizStatus').textContent = `Questionnaire chargé (${quiz.length} questions) — délimiteur: ${(window.__csvLastDelimiter||',')}`;
@@ -421,7 +408,7 @@
         const url = `/courses/${encodeURIComponent(course)}/${encodeURIComponent(file)}`;
         const text = await decodeUrlText(url);
         const quiz = parseCSVToQuiz(text);
-        updateDiag();
+        
         const delim = (window.__csvLastDelimiter || ',');
         socket.emit('host:loadQuiz', { roomCode, quiz });
         courseMsg.textContent = `Chargé: ${course}/${file} (${quiz.length} questions) — délimiteur: ${(window.__csvLastDelimiter||',')}`;
