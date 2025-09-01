@@ -153,6 +153,17 @@
       return new TextDecoder('utf-8').decode(bytes);
     }
 
+    
+    // ---- Diagnostics helper (avoid re-declaring variables) ----
+    function updateDiag(){
+      var el = document.getElementById('csvDiag');
+      if (!el) return;
+      var sep = (window.__csvLastDelimiter || ',');
+      var fb  = (window.__csvFallbackUsed ? 'oui' : 'non');
+      var hdr = (window.__csvDiagHeaders || []).join(', ');
+      el.textContent = "Séparateur: " + sep + " | Fallback: " + fb + " | En-têtes détectés: " + hdr;
+    }
+
     // ---- Socket & état ----
     const socket = io();
     const $ = (id) => document.getElementById(id);
@@ -355,10 +366,8 @@
         const text = await decodeFileText(csvInput);
         try {
           const quiz = parseCSVToQuiz(text);
-        const diagEl = document.getElementById('csvDiag');
-        diagEl.textContent = `Séparateur: ${(window.__csvLastDelimiter||',')} | Fallback: ${window.__csvFallbackUsed?'oui':'non'} | En-têtes détectés: ${(window.__csvDiagHeaders||[]).join(', ')}`;
-          const diagEl = document.getElementById('csvDiag');
-          diagEl.textContent = `Séparateur: ${(window.__csvLastDelimiter||',')} | Fallback: ${window.__csvFallbackUsed?'oui':'non'} | En-têtes détectés: ${(window.__csvDiagHeaders||[]).join(', ')}`;
+        updateDiag();
+          updateDiag();
         const delim = (window.__csvLastDelimiter || ',');
           socket.emit('host:loadQuiz', { roomCode, quiz });
           document.getElementById('quizStatus').textContent = `Questionnaire chargé (${quiz.length} questions) — délimiteur: ${(window.__csvLastDelimiter||',')}`;
@@ -412,8 +421,7 @@
         const url = `/courses/${encodeURIComponent(course)}/${encodeURIComponent(file)}`;
         const text = await decodeUrlText(url);
         const quiz = parseCSVToQuiz(text);
-        const diagEl = document.getElementById('csvDiag');
-        diagEl.textContent = `Séparateur: ${(window.__csvLastDelimiter||',')} | Fallback: ${window.__csvFallbackUsed?'oui':'non'} | En-têtes détectés: ${(window.__csvDiagHeaders||[]).join(', ')}`;
+        updateDiag();
         const delim = (window.__csvLastDelimiter || ',');
         socket.emit('host:loadQuiz', { roomCode, quiz });
         courseMsg.textContent = `Chargé: ${course}/${file} (${quiz.length} questions) — délimiteur: ${(window.__csvLastDelimiter||',')}`;
