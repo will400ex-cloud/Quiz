@@ -3,29 +3,29 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Quiz Live — Animateur (Auto-Reveal)</title>
+  <title>Quiz Live — Animateur (Cours)</title>
   <script src="/socket.io/socket.io.js"></script>
   <script src="https://cdn.tailwindcss.com"></script>
   <style>.pin-badge { letter-spacing: .15em; }</style>
 </head>
 <body class="min-h-screen bg-slate-950 text-slate-100">
   <div class="max-w-7xl mx-auto p-4 md:p-6 space-y-4">
-    <header class="flex items-center justify-between gap-4">
-      <div class="flex items-center gap-3">
-        <img src="/images/logo_cegep.png" alt="Logo Cégep" class="h-10 w-auto object-contain" onerror="this.style.display='none'">
-        <img src="/images/logo_tge.png" alt="Logo TGÉ" class="h-10 w-auto object-contain" onerror="this.style.display='none'">
-      </div>
-      <div class="text-center">
-        <div class="text-xs text-slate-300">Code PIN</div>
+    <!-- Pale strip for logos -->
+    <div class="bg-slate-100/90 text-slate-900 rounded-2xl p-3 shadow flex items-center gap-4">
+      <img src="/images/logo_cegep.png" alt="Logo Cégep" class="h-12 w-auto object-contain" onerror="this.style.display='none'">
+      <img src="/images/logo_tge.png" alt="Logo TGÉ" class="h-12 w-auto object-contain" onerror="this.style.display='none'">
+      <div class="ml-auto text-center">
+        <div class="text-xs text-slate-600">Code PIN</div>
         <div id="pin" class="pin-badge inline-block bg-yellow-400 text-slate-900 rounded-2xl px-6 py-2 text-3xl font-extrabold shadow"></div>
-        <button id="copyPin" class="ml-2 text-xs bg-slate-800 hover:bg-slate-700 rounded px-2 py-1 border border-slate-600">Copier</button>
+        <button id="copyPin" class="ml-2 text-xs bg-slate-900 text-slate-100 hover:bg-slate-800 rounded px-2 py-1 border border-slate-700">Copier</button>
       </div>
-      <div class="text-right">
-        <div class="text-xs text-slate-400">Joueurs connectés</div>
+      <div class="text-right ml-4">
+        <div class="text-xs text-slate-600">Joueurs connectés</div>
         <div id="livePlayers" class="text-2xl font-mono">0</div>
       </div>
-    </header>
+    </div>
 
+    <!-- Controls + status -->
     <section class="grid md:grid-cols-4 gap-4">
       <div class="bg-slate-900/60 rounded-2xl p-4 flex flex-col gap-2">
         <h2 class="font-semibold">Contrôles</h2>
@@ -34,7 +34,9 @@
         <button id="revealBtn" class="w-full bg-amber-600 hover:bg-amber-700 rounded p-3 font-semibold">Révéler (manuel) ✅</button>
         <button id="exportBtn" class="w-full bg-teal-600 hover:bg-teal-700 rounded p-3 font-semibold disabled:opacity-50" disabled>Exporter scores (CSV)</button>
       </div>
-      <div class="bg-slate-900/60 rounded-2xl p-4 flex flex-col gap-2 md:col-span-3">
+
+      <!-- Status + Course picker -->
+      <div class="bg-slate-900/60 rounded-2xl p-4 flex flex-col gap-3 md:col-span-3">
         <h2 class="font-semibold">Statut de la question</h2>
         <div class="flex items-center justify-between">
           <div>
@@ -50,9 +52,26 @@
         <div id="progressBar" class="h-2 bg-slate-800 rounded overflow-hidden">
           <div id="progressFill" class="h-2 bg-indigo-500" style="width:0%"></div>
         </div>
+
+        <!-- Course Picker -->
+        <div class="mt-3 grid md:grid-cols-3 gap-3">
+          <div class="col-span-1">
+            <label class="text-xs text-slate-400">Cours</label>
+            <select id="courseSelect" class="w-full bg-slate-800 border border-slate-700 rounded p-2"></select>
+          </div>
+          <div class="col-span-1">
+            <label class="text-xs text-slate-400">Fichier CSV</label>
+            <select id="fileSelect" class="w-full bg-slate-800 border border-slate-700 rounded p-2"></select>
+          </div>
+          <div class="col-span-1 flex items-end">
+            <button id="loadCourseCsv" class="w-full bg-blue-600 hover:bg-blue-700 rounded p-3 font-semibold">Charger ce CSV</button>
+          </div>
+        </div>
+        <p id="courseMsg" class="text-xs text-slate-300"></p>
       </div>
     </section>
 
+    <!-- Question focus -->
     <section class="bg-slate-900/60 rounded-2xl p-4">
       <div class="flex items-start justify-between gap-4">
         <div>
@@ -67,6 +86,7 @@
       </div>
     </section>
 
+    <!-- Responses -->
     <section class="bg-slate-900/60 rounded-2xl p-4">
       <h3 class="font-semibold mb-2">Réponses</h3>
       <div id="liveOnly" class="text-slate-200">
@@ -76,6 +96,18 @@
         <div class="grid grid-cols-4 gap-3" id="countGrid"></div>
         <p id="correctMsg" class="mt-3 text-emerald-400 font-semibold"></p>
       </div>
+    </section>
+
+    <!-- JSON/CSV manual import still available -->
+    <section class="bg-slate-900/60 rounded-2xl p-4">
+      <h2 class="font-semibold mb-2">Importer manuellement</h2>
+      <p class="text-sm text-slate-300 mb-2">Collez du JSON ou chargez un CSV (en-têtes : question, option_a, option_b, option_c, option_d, correct[, time, explanation]).</p>
+      <textarea id="quizJson" rows="6" class="w-full p-2 rounded bg-slate-800 border border-slate-700 font-mono text-xs" placeholder='[{"question":"…","options":["A","B","C","D"],"correctIndex":1,"time":20,"explanation":"Indice..."}]'></textarea>
+      <div class="flex items-center gap-2 mt-2">
+        <input id="csvFile" type="file" accept=".csv" class="text-xs" />
+        <button id="loadQuiz" class="bg-blue-600 hover:bg-blue-700 rounded px-3 py-2 text-sm font-semibold">Charger</button>
+      </div>
+      <p id="quizStatus" class="text-xs text-slate-300 mt-2"></p>
     </section>
   </div>
 
@@ -99,6 +131,9 @@
     const liveOnly = $('liveOnly');
     const countGrid = $('countGrid');
     const livePlayers = $('livePlayers');
+    const courseSelect = $('courseSelect');
+    const fileSelect = $('fileSelect');
+    const courseMsg = $('courseMsg');
 
     function fmtMs(ms){ const s = Math.max(0, Math.ceil(ms/1000)); return s + 's'; }
     function loopTimer(){
@@ -131,7 +166,7 @@
       try { await navigator.clipboard.writeText(text); $('copyPin').textContent = 'Copié !'; setTimeout(()=> $('copyPin').textContent='Copier', 1500); } catch {}
     };
 
-    // Import helpers
+    // Manual import
     function parseCSVToQuiz(csvText){
       const rows=[]; let i=0, field='', row=[], inQuotes=false;
       const pushField=()=>{ row.push(field); field=''; };
@@ -144,8 +179,8 @@
         } else {
           if(c === '"'){ inQuotes=true; }
           else if(c === ','){ pushField(); }
-          else if(c === '\n'){ pushField(); pushRow(); }
-          else if(c === '\r'){}
+          else if(c === '\\n'){ pushField(); pushRow(); }
+          else if(c === '\\r'){}
           else { field += c; }
         }
         i++;
@@ -172,34 +207,61 @@
       }
       return quiz;
     }
-    document.addEventListener('click', (e)=>{
-      if (e.target && e.target.id === 'loadQuiz') {
-        (async ()=>{
-          if (!roomCode) { alert('Crée d’abord un salon.'); return; }
-          const csvInput = document.getElementById('csvFile')?.files?.[0];
-          if (csvInput) {
-            const text = await csvInput.text();
-            try {
-              const quiz = parseCSVToQuiz(text);
-              if (!quiz.length) throw new Error('CSV vide/mal formé');
-              socket.emit('host:loadQuiz', { roomCode, quiz });
-            } catch(err){ document.getElementById('quizStatus').textContent = 'Erreur CSV : ' + err.message; }
-          } else {
-            try {
-              const raw = document.getElementById('quizJson').value;
-              const quiz = JSON.parse(raw);
-              socket.emit('host:loadQuiz', { roomCode, quiz });
-            } catch(err){ document.getElementById('quizStatus').textContent = 'JSON invalide.'; }
-          }
-        })();
+    document.getElementById('loadQuiz').onclick = async () => {
+      if (!roomCode) { alert('Crée d’abord un salon.'); return; }
+      const csvInput = document.getElementById('csvFile')?.files?.[0];
+      if (csvInput) {
+        const text = await csvInput.text();
+        try { const quiz = parseCSVToQuiz(text); if (!quiz.length) throw new Error('CSV vide/mal formé'); socket.emit('host:loadQuiz', { roomCode, quiz }); }
+        catch(e){ document.getElementById('quizStatus').textContent = 'Erreur CSV : ' + e.message; }
+      } else {
+        try { const raw = document.getElementById('quizJson').value; const quiz = JSON.parse(raw); socket.emit('host:loadQuiz', { roomCode, quiz }); }
+        catch(e){ document.getElementById('quizStatus').textContent = 'JSON invalide.'; }
       }
-    });
+    };
+
+    // ---- Courses picker logic ----
+    async function fetchJSON(url){ const r = await fetch(url); if(!r.ok) throw new Error('HTTP '+r.status); return r.json(); }
+    async function refreshCourses(){
+      try {
+        const data = await fetchJSON('/api/courses');
+        courseSelect.innerHTML = (data.courses||[]).map(c => `<option value="${c}">${c}</option>`).join('');
+        fileSelect.innerHTML = '';
+        courseMsg.textContent = data.courses?.length ? 'Cours détectés dans /public/courses' : 'Aucun cours trouvé (créez des sous-dossiers dans /public/courses)';
+        if (data.courses?.length) { await refreshFiles(); }
+      } catch(e){ courseMsg.textContent = 'Erreur chargement cours'; }
+    }
+    async function refreshFiles(){
+      const course = courseSelect.value;
+      if (!course) { fileSelect.innerHTML=''; return; }
+      try {
+        const data = await fetchJSON(`/api/courses/${encodeURIComponent(course)}/files`);
+        fileSelect.innerHTML = (data.files||[]).map(f => `<option value="${f}">${f}</option>`).join('');
+        if (!data.files?.length) courseMsg.textContent = 'Aucun CSV dans ce cours.';
+      } catch(e){ courseMsg.textContent = 'Erreur chargement fichiers'; }
+    }
+    courseSelect.addEventListener('change', refreshFiles);
+    document.getElementById('loadCourseCsv').onclick = async () => {
+      if (!roomCode) { alert('Crée d’abord un salon.'); return; }
+      const course = courseSelect.value; const file = fileSelect.value;
+      if (!course || !file) { courseMsg.textContent = 'Sélectionnez un cours et un CSV.'; return; }
+      try {
+        const url = `/courses/${encodeURIComponent(course)}/${encodeURIComponent(file)}`;
+        const text = await fetch(url).then(r => r.text());
+        const quiz = parseCSVToQuiz(text);
+        if (!quiz.length) throw new Error('CSV vide/mal formé');
+        socket.emit('host:loadQuiz', { roomCode, quiz });
+        courseMsg.textContent = `Chargé: ${course}/${file} (${quiz.length} questions)`;
+      } catch(e){ courseMsg.textContent = 'Erreur chargement CSV: '+e.message; }
+    };
 
     // Socket events
     socket.on('host:roomCreated', (pin) => {
       roomCode = pin;
-      $('pin').textContent = pin;
-      $('exportBtn').disabled = false;
+      document.getElementById('pin').textContent = pin;
+      document.getElementById('exportBtn').disabled = false;
+      // Also populate courses when a room exists
+      refreshCourses();
     });
     socket.on('host:players', (players) => {
       livePlayers.textContent = players.length;
@@ -243,18 +305,5 @@
       document.getElementById('correctMsg').textContent = `Bonne réponse : ${'ABCD'[correctIndex]}`;
     });
   </script>
-
-  <div class="max-w-7xl mx-auto p-4 md:p-6">
-    <section class="bg-slate-900/60 rounded-2xl p-4">
-      <h2 class="font-semibold mb-2">Importer des questions</h2>
-      <p class="text-sm text-slate-300 mb-2">Collez du JSON ou chargez un CSV (en-têtes : question, option_a, option_b, option_c, option_d, correct[, time, explanation]).</p>
-      <textarea id="quizJson" rows="6" class="w-full p-2 rounded bg-slate-800 border border-slate-700 font-mono text-xs" placeholder='[{"question":"…","options":["A","B","C","D"],"correctIndex":1,"time":20,"explanation":"Indice..."}]'></textarea>
-      <div class="flex items-center gap-2 mt-2">
-        <input id="csvFile" type="file" accept=".csv" class="text-xs" />
-        <button id="loadQuiz" class="bg-blue-600 hover:bg-blue-700 rounded px-3 py-2 text-sm font-semibold">Charger</button>
-      </div>
-      <p id="quizStatus" class="text-xs text-slate-300 mt-2"></p>
-    </section>
-  </div>
 </body>
 </html>
