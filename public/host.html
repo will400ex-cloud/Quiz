@@ -3,14 +3,18 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Quiz Live — Animateur (Cours)</title>
+  <title>Quiz Live — Animateur (Stable)</title>
+  <!-- Tailwind CDN: safe for dev; warning in console is normal. In prod you can keep it or prebuild. -->
   <script src="/socket.io/socket.io.js"></script>
   <script src="https://cdn.tailwindcss.com"></script>
-  <style>.pin-badge { letter-spacing: .15em; }</style>
+  <style>
+    .pin-badge { letter-spacing: .15em; }
+    .btn:disabled { opacity: .5; cursor: not-allowed; }
+  </style>
 </head>
 <body class="min-h-screen bg-slate-950 text-slate-100">
   <div class="max-w-7xl mx-auto p-4 md:p-6 space-y-4">
-    <!-- Pale strip for logos -->
+    <!-- Bandeau pâle pour logos + PIN + joueurs -->
     <div class="bg-slate-100/90 text-slate-900 rounded-2xl p-3 shadow flex items-center gap-4">
       <img src="/images/logo_cegep.png" alt="Logo Cégep" class="h-12 w-auto object-contain" onerror="this.style.display='none'">
       <img src="/images/logo_tge.png" alt="Logo TGÉ" class="h-12 w-auto object-contain" onerror="this.style.display='none'">
@@ -25,17 +29,16 @@
       </div>
     </div>
 
-    <!-- Controls + status -->
+    <!-- Contrôles + statut + sélecteur de cours -->
     <section class="grid md:grid-cols-4 gap-4">
       <div class="bg-slate-900/60 rounded-2xl p-4 flex flex-col gap-2">
         <h2 class="font-semibold">Contrôles</h2>
         <button id="createRoom" class="w-full bg-emerald-600 hover:bg-emerald-700 rounded p-3 font-semibold">Créer un salon</button>
-        <button id="nextBtn" class="w-full bg-indigo-600 hover:bg-indigo-700 rounded p-3 font-semibold">Question suivante ▶</button>
+        <button id="nextBtn" class="btn w-full bg-indigo-600 hover:bg-indigo-700 rounded p-3 font-semibold">Question suivante ▶</button>
         <button id="revealBtn" class="w-full bg-amber-600 hover:bg-amber-700 rounded p-3 font-semibold">Révéler (manuel) ✅</button>
-        <button id="exportBtn" class="w-full bg-teal-600 hover:bg-teal-700 rounded p-3 font-semibold disabled:opacity-50" disabled>Exporter scores (CSV)</button>
+        <button id="exportBtn" class="w-full bg-teal-600 hover:bg-teal-700 rounded p-3 font-semibold" disabled>Exporter scores (CSV)</button>
       </div>
 
-      <!-- Status + Course picker -->
       <div class="bg-slate-900/60 rounded-2xl p-4 flex flex-col gap-3 md:col-span-3">
         <h2 class="font-semibold">Statut de la question</h2>
         <div class="flex items-center justify-between">
@@ -49,11 +52,11 @@
             <div id="deadline" class="text-xs text-slate-400"></div>
           </div>
         </div>
-        <div id="progressBar" class="h-2 bg-slate-800 rounded overflow-hidden">
+        <div class="h-2 bg-slate-800 rounded overflow-hidden">
           <div id="progressFill" class="h-2 bg-indigo-500" style="width:0%"></div>
         </div>
 
-        <!-- Course Picker -->
+        <!-- Sélecteur de cours/fichiers CSV (dans public/courses/...) -->
         <div class="mt-3 grid md:grid-cols-3 gap-3">
           <div class="col-span-1">
             <label class="text-xs text-slate-400">Cours</label>
@@ -65,14 +68,14 @@
           </div>
           <div class="col-span-1 flex items-end gap-2">
             <button id="loadCourseCsv" class="w-full bg-blue-600 hover:bg-blue-700 rounded p-3 font-semibold">Charger ce CSV</button>
-            <button id="resetImport" class="w-32 bg-slate-700 hover:bg-slate-600 rounded p-3 font-semibold">Réinitialiser</button>
+            <button id="resetImport" class="w-40 bg-slate-700 hover:bg-slate-600 rounded p-3 font-semibold">Réinitialiser</button>
           </div>
         </div>
         <p id="courseMsg" class="text-xs text-slate-300"></p>
       </div>
     </section>
 
-    <!-- Question focus -->
+    <!-- Zone Question -->
     <section class="bg-slate-900/60 rounded-2xl p-4">
       <div class="flex items-start justify-between gap-4">
         <div>
@@ -87,7 +90,7 @@
       </div>
     </section>
 
-    <!-- Responses -->
+    <!-- Réponses -->
     <section class="bg-slate-900/60 rounded-2xl p-4">
       <h3 class="font-semibold mb-2">Réponses</h3>
       <div id="liveOnly" class="text-slate-200">
@@ -99,7 +102,7 @@
       </div>
     </section>
 
-    <!-- JSON/CSV manual import still available -->
+    <!-- Import manuel JSON/CSV -->
     <section class="bg-slate-900/60 rounded-2xl p-4">
       <h2 class="font-semibold mb-2">Importer manuellement</h2>
       <p class="text-sm text-slate-300 mb-2">Collez du JSON ou chargez un CSV (en-têtes : question, option_a, option_b, option_c, option_d, correct[, time, explanation]).</p>
@@ -113,14 +116,24 @@
   </div>
 
   <script>
+    // ---- Socket & état ----
     const socket = io();
+    const $ = (id) => document.getElementById(id);
+
     let roomCode = null;
     let accepting = false;
     let endAt = null;
     let rafId = null;
     let currentQ = { question: '', options: [], time: 20000 };
+    let quizLoadedOk = false;
 
-    const $ = id => document.getElementById(id);
+    const nextBtn = $('nextBtn');
+    function setNextEnabled(on){
+      nextBtn.disabled = !on;
+    }
+    setNextEnabled(false);
+
+    // ---- Utilitaires UI ----
     const playersCount = $('playersCount');
     const answeredCount = $('answeredCount');
     const timerEl = $('timer');
@@ -135,17 +148,6 @@
     const courseSelect = $('courseSelect');
     const fileSelect = $('fileSelect');
     const courseMsg = $('courseMsg');
-    let quizLoadedOk = false;
-    const nextBtn = $('nextBtn');
-
-    function setNextEnabled(on) {
-      if (!nextBtn) return;
-      nextBtn.disabled = !on;
-      if (on) { nextBtn.classList.remove('opacity-50','cursor-not-allowed'); }
-      else { nextBtn.classList.add('opacity-50','cursor-not-allowed'); }
-    }
-    setNextEnabled(false);
-
 
     function fmtMs(ms){ const s = Math.max(0, Math.ceil(ms/1000)); return s + 's'; }
     function loopTimer(){
@@ -167,60 +169,60 @@
       livePlayers.textContent = totals.players ?? 0;
     }
 
-    // Buttons
-    $('createRoom').onclick = () => socket.emit('host:createRoom');
-    $('nextBtn').onclick = () => { if (!roomCode || !quizLoadedOk) return; socket.emit('host:nextQuestion', { roomCode }); };
-    $('revealBtn').onclick = () => roomCode && socket.emit('host:reveal', { roomCode });
-    $('exportBtn').onclick = () => { if (!roomCode) return; const a=document.createElement('a'); a.href=`/export/${roomCode}`; a.download=`scores_${roomCode}.csv`; document.body.appendChild(a); a.click(); a.remove(); };
+    // ---- Boutons ----
+    $('createRoom').onclick = () => { socket.emit('host:createRoom'); };
+    nextBtn.onclick = () => { if (!roomCode || !quizLoadedOk) return; socket.emit('host:nextQuestion', { roomCode }); };
+    $('revealBtn').onclick = () => { if (!roomCode) return; socket.emit('host:reveal', { roomCode }); };
+    $('exportBtn').onclick = () => {
+      if (!roomCode) return;
+      const a = document.createElement('a');
+      a.href = `/export/${roomCode}`;
+      a.download = `scores_${roomCode}.csv`;
+      document.body.appendChild(a); a.click(); a.remove();
+    };
     $('copyPin').onclick = async () => {
       const text = $('pin').textContent.trim();
       if (!text) return;
       try { await navigator.clipboard.writeText(text); $('copyPin').textContent = 'Copié !'; setTimeout(()=> $('copyPin').textContent='Copier', 1500); } catch {}
     };
 
-    // Manual import
+    // ---- Parseur CSV robuste ----
     function parseCSVToQuiz(csvText){
-      // Normalize line endings & strip BOM
-      csvText = csvText.replace(/^\uFEFF/, '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-      // Try to detect delimiter: prioritize ; , then , then tab
-      const headerLine = csvText.split('\n').find(l => l.trim().length > 0) || '';
-      const candidates = [';', ',', '\t'];
-      let delimiter = ',';
-      let bestScore = -1;
+      window.__csvLastErrors = []; window.__csvLastDelimiter = ',';
+      csvText = csvText.replace(/^\\uFEFF/, '').replace(/\\r\\n/g, '\\n').replace(/\\r/g, '\\n');
+      const headerLine = (csvText.split('\\n').find(l => l.trim().length > 0) || '');
+      const candidates = [';', ',', '\\t'];
+      let delimiter = ','; let bestScore = -1;
       for (const cand of candidates){
-        const score = (headerLine.match(new RegExp(`"${cand}"`,'g'))||[]).length + (headerLine.split(cand).length - 1);
+        const score = (headerLine.split(cand).length - 1);
         if (score > bestScore){ bestScore = score; delimiter = cand; }
       }
+      window.__csvLastDelimiter = delimiter;
 
-      // CSV split with quotes support (RFC4180-ish)
       function splitCSV(text, delim){
-        const rows = [];
-        let row = [], field = '', i = 0, inQuotes = false;
+        const rows = []; let row = []; let field = ''; let i = 0; let inQuotes = false;
         for (; i < text.length; i++){
           const c = text[i];
           if (inQuotes){
             if (c === '"'){
-              if (text[i+1] === '"'){ field += '"'; i++; }
-              else { inQuotes = false; }
+              if (text[i+1] === '"'){ field += '"'; i++; } else { inQuotes = false; }
             } else { field += c; }
           } else {
             if (c === '"'){ inQuotes = true; }
-            else if (c === '\n'){ row.push(field); rows.push(row); row = []; field = ''; }
+            else if (c === '\\n'){ row.push(field); rows.push(row); row = []; field = ''; }
             else if (c === delim){ row.push(field); field = ''; }
             else { field += c; }
           }
         }
-        // flush
         if (field.length || row.length){ row.push(field); rows.push(row); }
-        // trim trailing blank rows
         while (rows.length && rows[rows.length-1].every(v => (v||'').trim()==='')) rows.pop();
         return rows;
       }
 
       const rows = splitCSV(csvText, delimiter);
       if (!rows.length) throw new Error('CSV vide');
-      // Normalize headers
-      const norm = s => (s||'').toString().trim().toLowerCase().replace(/\s+/g, '_');
+
+      const norm = (s) => (s||'').toString().trim().toLowerCase().replace(/\\s+/g, '_');
       const headers = rows[0].map(h => norm(h));
       const alias = {
         'a':'option_a','b':'option_b','c':'option_c','d':'option_d',
@@ -232,15 +234,13 @@
       const target = ['question','option_a','option_b','option_c','option_d','correct','time','explanation'];
       const idx = {};
       for (let i=0;i<headers.length;i++){
-        let h = headers[i];
+        const h = headers[i];
         if (target.includes(h)) { idx[h] = i; continue; }
         if (alias[h] && idx[alias[h]] == null) { idx[alias[h]] = i; }
       }
       const required = ['question','option_a','option_b','option_c','option_d','correct'];
       const missing = required.filter(k => idx[k] == null);
-      if (missing.length){
-        throw new Error('En-têtes manquants : ' + missing.join(', '));
-      }
+      if (missing.length){ throw new Error('En-têtes manquants : ' + missing.join(', ')); }
 
       function letterToIndex(v){
         if (v == null) return null;
@@ -248,14 +248,13 @@
         if (s === '') return null;
         if (/^[0-3]$/.test(s)) return parseInt(s,10);
         const m = {A:0,B:1,C:2,D:3};
-        return m[s.toUpperCase()] ?? null;
+        return (m[s.toUpperCase()] != null) ? m[s.toUpperCase()] : null;
       }
 
-      const quiz = [];
-      const errors = [];
+      const quiz = []; const errors = [];
       for (let r = 1; r < rows.length; r++){
         const cols = rows[r];
-        const lineNum = r+1; // 1-based including header
+        const lineNum = r+1;
         const q = (cols[idx['question']]||'').trim();
         const opts = ['option_a','option_b','option_c','option_d'].map(k => (cols[idx[k]]||'').trim());
         const corrRaw = (cols[idx['correct']]||'').trim();
@@ -273,43 +272,53 @@
           if (!Number.isFinite(n) || n <= 0) errs.push(`time invalide ('${tRaw}')`);
           else tVal = n;
         }
-        if (errs.length){
-          errors.push({ ligne: lineNum, erreur: errs.join('; ') });
-          continue;
-        }
+        if (errs.length){ errors.push({ ligne: lineNum, erreur: errs.join('; ') }); continue; }
         quiz.push({ question: q, options: opts, correctIndex: corr, time: tVal, explanation: expl });
       }
       if (!quiz.length){
         const firstErr = errors[0] ? ` — ex: ligne ${errors[0].ligne} : ${errors[0].erreur}` : '';
         throw new Error('Aucune ligne valide' + firstErr);
       }
-      // attach last parse diagnostics to global scope for UI if needed
       window.__csvLastErrors = errors;
-      window.__csvLastDelimiter = delimiter;
       return quiz;
     }
-}
-    document.getElementById('loadQuiz').onclick = async () => {
+
+    // ---- Import manuel ----
+    $('loadQuiz').onclick = async () => {
       if (!roomCode) { alert('Crée d’abord un salon.'); return; }
       const csvInput = document.getElementById('csvFile')?.files?.[0];
       if (csvInput) {
         const text = await csvInput.text();
-        try { const quiz = parseCSVToQuiz(text); if (!quiz.length) throw new Error('CSV vide/mal formé'); socket.emit('host:loadQuiz', { roomCode, quiz });
-          quizLoadedOk = true; setNextEnabled(true); }
-        catch(e){ document.getElementById('quizStatus').textContent = 'Erreur CSV : ' + e.message; }
+        try {
+          const quiz = parseCSVToQuiz(text);
+          socket.emit('host:loadQuiz', { roomCode, quiz });
+          document.getElementById('quizStatus').textContent = `Questionnaire chargé (${quiz.length} questions).`;
+          quizLoadedOk = true; setNextEnabled(true);
+        } catch(e){
+          const extra = (window.__csvLastErrors && window.__csvLastErrors.length) ? ` — ex: ligne ${window.__csvLastErrors[0].ligne} : ${window.__csvLastErrors[0].erreur}` : '';
+          document.getElementById('quizStatus').textContent = 'Erreur CSV : ' + e.message + extra;
+          quizLoadedOk = false; setNextEnabled(false);
+        }
       } else {
-        try { const raw = document.getElementById('quizJson').value; const quiz = JSON.parse(raw); socket.emit('host:loadQuiz', { roomCode, quiz });
-          quizLoadedOk = true; setNextEnabled(true); }
-        catch(e){ document.getElementById('quizStatus').textContent = 'JSON invalide.'; }
+        try {
+          const raw = document.getElementById('quizJson').value;
+          const quiz = JSON.parse(raw);
+          socket.emit('host:loadQuiz', { roomCode, quiz });
+          document.getElementById('quizStatus').textContent = `Questionnaire chargé (${quiz.length} questions).`;
+          quizLoadedOk = true; setNextEnabled(true);
+        } catch(e){
+          document.getElementById('quizStatus').textContent = 'JSON invalide.';
+          quizLoadedOk = false; setNextEnabled(false);
+        }
       }
     };
 
-    // ---- Courses picker logic ----
+    // ---- API cours/CSV ----
     async function fetchJSON(url){ const r = await fetch(url); if(!r.ok) throw new Error('HTTP '+r.status); return r.json(); }
     async function refreshCourses(){
       try {
         const data = await fetchJSON('/api/courses');
-        courseSelect.innerHTML = (data.courses||[]).map(c => `<option value="${c}">${c}</option>`).join('');
+        courseSelect.innerHTML = (data.courses||[]).map(c => `<option value="${c}">${c.replace(/_/g, ' ')}</option>`).join('');
         fileSelect.innerHTML = '';
         courseMsg.textContent = data.courses?.length ? 'Cours détectés dans /public/courses' : 'Aucun cours trouvé (créez des sous-dossiers dans /public/courses)';
         if (data.courses?.length) { await refreshFiles(); }
@@ -325,42 +334,36 @@
       } catch(e){ courseMsg.textContent = 'Erreur chargement fichiers'; }
     }
     courseSelect.addEventListener('change', refreshFiles);
-    document.getElementById('loadCourseCsv').onclick = async () => {
-      setNextEnabled(false);
-      quizLoadedOk = false;
+    $('loadCourseCsv').onclick = async () => {
       if (!roomCode) { alert('Crée d’abord un salon.'); return; }
+      setNextEnabled(false); quizLoadedOk = false;
       const course = courseSelect.value; const file = fileSelect.value;
       if (!course || !file) { courseMsg.textContent = 'Sélectionnez un cours et un CSV.'; return; }
       try {
         const url = `/courses/${encodeURIComponent(course)}/${encodeURIComponent(file)}`;
         const text = await fetch(url).then(r => r.text());
         const quiz = parseCSVToQuiz(text);
-        if (!quiz.length) throw new Error('CSV vide/mal formé');
         socket.emit('host:loadQuiz', { roomCode, quiz });
-          quizLoadedOk = true; setNextEnabled(true);
         courseMsg.textContent = `Chargé: ${course}/${file} (${quiz.length} questions)`;
-        quizLoadedOk = true;
-        setNextEnabled(true);
-      } catch(e){ const extra = (window.__csvLastErrors && window.__csvLastErrors.length) ? ` — ex: ligne ${window.__csvLastErrors[0].ligne} : ${window.__csvLastErrors[0].erreur}` : ''; courseMsg.textContent = 'Erreur chargement CSV: '+e.message + extra + ' — choisissez un autre fichier ou réessayez.';
+        quizLoadedOk = true; setNextEnabled(true);
+      } catch(e){
+        const extra = (window.__csvLastErrors && window.__csvLastErrors.length) ? ` — ex: ligne ${window.__csvLastErrors[0].ligne} : ${window.__csvLastErrors[0].erreur}` : '';
+        courseMsg.textContent = 'Erreur chargement CSV: ' + e.message + extra + ' — choisissez un autre fichier ou réessayez.';
+        setNextEnabled(false); quizLoadedOk = false;
         try { await refreshFiles(); } catch(_) {}
-        setNextEnabled(false);
-        quizLoadedOk = false;
       }
     };
-
-    document.getElementById('resetImport').onclick = async () => {
+    $('resetImport').onclick = async () => {
       courseMsg.textContent = '';
       try { await refreshCourses(); } catch(_) {}
-      setNextEnabled(false);
-      quizLoadedOk = false;
+      setNextEnabled(false); quizLoadedOk = false;
     };
 
-    // Socket events
+    // ---- Sockets ----
     socket.on('host:roomCreated', (pin) => {
       roomCode = pin;
-      document.getElementById('pin').textContent = pin;
-      document.getElementById('exportBtn').disabled = false;
-      // Also populate courses when a room exists
+      $('pin').textContent = pin;
+      $('exportBtn').disabled = false;
       refreshCourses();
     });
     socket.on('host:players', (players) => {
@@ -380,34 +383,52 @@
     socket.on('host:status', ({ totals, accepting: isAccepting, endAt: e }) => {
       accepting = !!isAccepting; if (e) endAt = e;
       setCounts(totals);
-      if (accepting) { if (rafId) cancelAnimationFrame(rafId); rafId = requestAnimationFrame(loopTimer); liveOnly.classList.remove('hidden'); afterReveal.classList.add('hidden'); }
+      if (accepting) {
+        if (rafId) cancelAnimationFrame(rafId);
+        rafId = requestAnimationFrame(loopTimer);
+        liveOnly.classList.remove('hidden');
+        afterReveal.classList.add('hidden');
+      }
     });
     socket.on('room:question', ({ index, total, question, options, time, endAt: e, totals }) => {
       currentQ = { question, options, time: (time||20)*1000 };
       document.getElementById('qtext').textContent = `Q${index+1}/${total} — ${question}`;
       document.getElementById('qProgress').textContent = `Question ${index+1} / ${total}`;
-      document.getElementById('optlist').innerHTML = options.map((opt,i)=>`
-        <li id="opt${i}" class="px-3 py-2 rounded bg-slate-800/70 border border-slate-700">
+      document.getElementById('optlist').innerHTML = options.map((opt,i)=>{
+        return `<li id="opt${i}" class="px-3 py-2 rounded bg-slate-800/70 border border-slate-700">
           <span class="font-semibold text-slate-200 mr-2">${'ABCD'[i]}.</span>
           <span class="text-slate-200">${opt}</span>
-        </li>`).join('');
+        </li>`;
+      }).join('');
       accepting = true; endAt = e; setCounts(totals);
       if (rafId) cancelAnimationFrame(rafId); rafId = requestAnimationFrame(loopTimer);
-      liveOnly.classList.remove('hidden'); afterReveal.classList.add('hidden'); document.getElementById('countGrid').innerHTML = ''; document.getElementById('correctMsg').textContent=''; document.getElementById('explaBadge').classList.add('hidden'); document.getElementById('explaBadge').textContent='';
+      liveOnly.classList.remove('hidden'); afterReveal.classList.add('hidden');
+      countGrid.innerHTML = ''; document.getElementById('correctMsg').textContent='';
+      const eb = document.getElementById('explaBadge'); eb.classList.add('hidden'); eb.textContent='';
     });
     socket.on('room:reveal', ({ correctIndex, explanation }) => {
       accepting = false; if (rafId) cancelAnimationFrame(rafId);
-      for (let i=0;i<4;i++){ const li = document.getElementById('opt'+i); if (li){ li.classList.remove('ring-2','ring-emerald-400','border-emerald-500'); if (i===correctIndex) li.classList.add('ring-2','ring-emerald-400','border-emerald-500'); } }
-      if (explanation && explanation.trim()){ const e = document.getElementById('explaBadge'); e.textContent = explanation.trim(); e.classList.remove('hidden'); }
+      for (let i=0;i<4;i++){
+        const li = document.getElementById('opt'+i);
+        if (li){
+          li.classList.remove('ring-2','ring-emerald-400','border-emerald-500');
+          if (i === correctIndex) li.classList.add('ring-2','ring-emerald-400','border-emerald-500');
+        }
+      }
+      if (explanation && explanation.trim()){
+        const e = document.getElementById('explaBadge');
+        e.textContent = explanation.trim(); e.classList.remove('hidden');
+      }
     });
     socket.on('host:counts', ({ counts, correctIndex, totals }) => {
       setCounts(totals);
       liveOnly.classList.add('hidden'); afterReveal.classList.remove('hidden');
-      countGrid.innerHTML = counts.map((n,i)=>`
-        <div class="rounded-xl bg-slate-800 border border-slate-700 p-4 text-center ${i===correctIndex?'ring-2 ring-emerald-400':''}">
+      countGrid.innerHTML = counts.map((n,i)=>{
+        return `<div class="rounded-xl bg-slate-800 border border-slate-700 p-4 text-center ${i===correctIndex?'ring-2 ring-emerald-400':''}">
           <div class="text-sm text-slate-400 mb-1">${'ABCD'[i]}</div>
           <div class="text-3xl font-mono">${n}</div>
-        </div>`).join('');
+        </div>`;
+      }).join('');
       document.getElementById('correctMsg').textContent = `Bonne réponse : ${'ABCD'[correctIndex]}`;
     });
   </script>
