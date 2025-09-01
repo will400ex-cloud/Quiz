@@ -116,6 +116,41 @@
   </div>
 
   <script>
+    
+    // --- Helpers: robust text decoding with BOM (UTF-8/UTF-16LE/UTF-16BE) ---
+    async function decodeFileText(file){
+      const buf = await file.arrayBuffer();
+      return decodeBufferWithBOM(buf);
+    }
+    async function decodeUrlText(url){
+      const res = await fetch(url);
+      const buf = await res.arrayBuffer();
+      return decodeBufferWithBOM(buf);
+    }
+    function decodeBufferWithBOM(buf){
+      const bytes = new Uint8Array(buf);
+      // UTF-8 BOM
+      if (bytes.length >= 3 && bytes[0] === 0xEF && bytes[1] === 0xBB && bytes[2] === 0xBF){
+        return new TextDecoder('utf-8').decode(bytes.subarray(3));
+      }
+      // UTF-16 LE BOM
+      if (bytes.length >= 2 && bytes[0] === 0xFF && bytes[1] === 0xFE){
+        return new TextDecoder('utf-16le').decode(bytes.subarray(2));
+      }
+      // UTF-16 BE BOM
+      if (bytes.length >= 2 && bytes[0] === 0xFE && bytes[1] === 0xFF){
+        return new TextDecoder('utf-16be').decode(bytes.subarray(2));
+      }
+      // Heuristic: many zeros indicate UTF-16 without BOM
+      let zeroCount = 0; for (let i=0;i<Math.min(bytes.length, 200); i++) if (bytes[i] === 0) zeroCount++;
+      if (zeroCount > 10){
+        // Guess LE
+        try { return new TextDecoder('utf-16le').decode(bytes); } catch {}
+        try { return new TextDecoder('utf-16be').decode(bytes); } catch {}
+      }
+      return new TextDecoder('utf-8').decode(bytes);
+    }
+
     // ---- Socket & état ----
     const socket = io();
     const $ = (id) => document.getElementById(id);
@@ -288,11 +323,12 @@
       if (!roomCode) { alert('Crée d’abord un salon.'); return; }
       const csvInput = document.getElementById('csvFile')?.files?.[0];
       if (csvInput) {
-        const text = await csvInput.text();
+        const text = await decodeFileText(csvInput);
         try {
           const quiz = parseCSVToQuiz(text);
+        const delim = (window.__csvLastDelimiter || ',');
           socket.emit('host:loadQuiz', { roomCode, quiz });
-          document.getElementById('quizStatus').textContent = `Questionnaire chargé (${quiz.length} questions).`;
+          document.getElementById('quizStatus').textContent = `Questionnaire chargé (${quiz.length} questions) — délimiteur: ${(window.__csvLastDelimiter||',')}`;
           quizLoadedOk = true; setNextEnabled(true);
         } catch(e){
           const extra = (window.__csvLastErrors && window.__csvLastErrors.length) ? ` — ex: ligne ${window.__csvLastErrors[0].ligne} : ${window.__csvLastErrors[0].erreur}` : '';
@@ -304,7 +340,7 @@
           const raw = document.getElementById('quizJson').value;
           const quiz = JSON.parse(raw);
           socket.emit('host:loadQuiz', { roomCode, quiz });
-          document.getElementById('quizStatus').textContent = `Questionnaire chargé (${quiz.length} questions).`;
+          document.getElementById('quizStatus').textContent = `Questionnaire chargé (${quiz.length} questions) — délimiteur: ${(window.__csvLastDelimiter||',')}`;
           quizLoadedOk = true; setNextEnabled(true);
         } catch(e){
           document.getElementById('quizStatus').textContent = 'JSON invalide.';
@@ -341,10 +377,11 @@
       if (!course || !file) { courseMsg.textContent = 'Sélectionnez un cours et un CSV.'; return; }
       try {
         const url = `/courses/${encodeURIComponent(course)}/${encodeURIComponent(file)}`;
-        const text = await fetch(url).then(r => r.text());
+        const text = await decodeUrlText(url);
         const quiz = parseCSVToQuiz(text);
+        const delim = (window.__csvLastDelimiter || ',');
         socket.emit('host:loadQuiz', { roomCode, quiz });
-        courseMsg.textContent = `Chargé: ${course}/${file} (${quiz.length} questions)`;
+        courseMsg.textContent = `Chargé: ${course}/${file} (${quiz.length} questions) — délimiteur: ${(window.__csvLastDelimiter||',')}`;
         quizLoadedOk = true; setNextEnabled(true);
       } catch(e){
         const extra = (window.__csvLastErrors && window.__csvLastErrors.length) ? ` — ex: ligne ${window.__csvLastErrors[0].ligne} : ${window.__csvLastErrors[0].erreur}` : '';
