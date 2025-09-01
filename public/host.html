@@ -7,6 +7,7 @@
   <!-- Tailwind CDN: safe for dev; warning in console is normal. In prod you can keep it or prebuild. -->
   <script src="/socket.io/socket.io.js"></script>
   <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
   <style>
     .pin-badge { letter-spacing: .15em; }
     .btn:disabled { opacity: .5; cursor: not-allowed; }
@@ -72,6 +73,7 @@
           </div>
         </div>
         <p id="courseMsg" class="text-xs text-slate-300"></p>
+<div id="csvDiag" class="text-[11px] text-slate-400 mt-1"></div>
       </div>
     </section>
 
@@ -311,6 +313,33 @@
         quiz.push({ question: q, options: opts, correctIndex: corr, time: tVal, explanation: expl });
       }
       if (!quiz.length){
+        // Fallback: try PapaParse with header mode
+        try {
+          const papa = Papa.parse(csvText, {header:true, skipEmptyLines:true});
+          const rows = papa.data || [];
+          const headers = (papa.meta && papa.meta.fields) ? papa.meta.fields : [];
+          window.__csvDiagHeaders = headers;
+          const norm = s => (s||'').toString().trim().toLowerCase().replace(/\s+/g, '_');
+          const alias = { 'a':'option_a','b':'option_b','c':'option_c','d':'option_d', 'optiona':'option_a','optionb':'option_b','optionc':'option_c','optiond':'option_d', 'answer':'correct','reponse':'correct','bonne_reponse':'correct','bonne':'correct', 'temps':'time','durée':'time','duree':'time','duration':'time', 'explication':'explanation','feedback':'explanation' };
+          const get = (obj, key) => obj[key] ?? obj[alias[key]] ?? null;
+          const quiz2=[]; const errors2=[];
+          for (let i=0; i<rows.length; i++){
+            const r = rows[i];
+            const q = (get(r,'question')||'').toString().trim();
+            const opts = ['option_a','option_b','option_c','option_d'].map(k => (get(r,k)||'').toString().trim());
+            const corrRaw = (get(r,'correct')||'').toString().trim();
+            const m = {A:0,B:1,C:2,D:3};
+            let corr = null; if (/^[0-3]$/.test(corrRaw)) corr = parseInt(corrRaw,10); else corr = m[corrRaw.toUpperCase()] ?? null;
+            let tVal = 20; const tRaw = (get(r,'time')||'').toString().trim(); if (tRaw !== '') { const n = parseInt(tRaw,10); if (Number.isFinite(n) && n>0) tVal = n; }
+            const expl = (get(r,'explanation')||'').toString().trim();
+            const lineNum = i+2;
+            const errs = []; if(!q) errs.push('question vide'); if (opts.some(o=>!o)) errs.push('option manquante'); if (corr==null) errs.push(`correct invalide ('${corrRaw}')`);
+            if (errs.length) { errors2.push({ligne: lineNum, erreur: errs.join('; ')}); continue; }
+            quiz2.push({question:q, options:opts, correctIndex:corr, time:tVal, explanation:expl});
+          }
+          if (quiz2.length){ window.__csvLastErrors = errors2; window.__csvFallbackUsed = true; return quiz2; }
+        } catch(_){}
+
         const firstErr = errors[0] ? ` — ex: ligne ${errors[0].ligne} : ${errors[0].erreur}` : '';
         throw new Error('Aucune ligne valide' + firstErr);
       }
@@ -326,6 +355,10 @@
         const text = await decodeFileText(csvInput);
         try {
           const quiz = parseCSVToQuiz(text);
+        const diagEl = document.getElementById('csvDiag');
+        diagEl.textContent = `Séparateur: ${(window.__csvLastDelimiter||',')} | Fallback: ${window.__csvFallbackUsed?'oui':'non'} | En-têtes détectés: ${(window.__csvDiagHeaders||[]).join(', ')}`;
+          const diagEl = document.getElementById('csvDiag');
+          diagEl.textContent = `Séparateur: ${(window.__csvLastDelimiter||',')} | Fallback: ${window.__csvFallbackUsed?'oui':'non'} | En-têtes détectés: ${(window.__csvDiagHeaders||[]).join(', ')}`;
         const delim = (window.__csvLastDelimiter || ',');
           socket.emit('host:loadQuiz', { roomCode, quiz });
           document.getElementById('quizStatus').textContent = `Questionnaire chargé (${quiz.length} questions) — délimiteur: ${(window.__csvLastDelimiter||',')}`;
@@ -379,6 +412,8 @@
         const url = `/courses/${encodeURIComponent(course)}/${encodeURIComponent(file)}`;
         const text = await decodeUrlText(url);
         const quiz = parseCSVToQuiz(text);
+        const diagEl = document.getElementById('csvDiag');
+        diagEl.textContent = `Séparateur: ${(window.__csvLastDelimiter||',')} | Fallback: ${window.__csvFallbackUsed?'oui':'non'} | En-têtes détectés: ${(window.__csvDiagHeaders||[]).join(', ')}`;
         const delim = (window.__csvLastDelimiter || ',');
         socket.emit('host:loadQuiz', { roomCode, quiz });
         courseMsg.textContent = `Chargé: ${course}/${file} (${quiz.length} questions) — délimiteur: ${(window.__csvLastDelimiter||',')}`;
