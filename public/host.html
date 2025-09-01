@@ -180,45 +180,115 @@
 
     // Manual import
     function parseCSVToQuiz(csvText){
-      const rows=[]; let i=0, field='', row=[], inQuotes=false;
-      const pushField=()=>{ row.push(field); field=''; };
-      const pushRow=()=>{ rows.push(row); row=[]; };
-      while(i<csvText.length){
-        const c = csvText[i];
-        if(inQuotes){
-          if(c === '"'){ if(csvText[i+1] === '"'){ field+='"'; i++; } else { inQuotes=false; } }
-          else { field += c; }
-        } else {
-          if(c === '"'){ inQuotes=true; }
-          else if(c === ','){ pushField(); }
-          else if(c === '\\n'){ pushField(); pushRow(); }
-          else if(c === '\\r'){}
-          else { field += c; }
+      // Normalize line endings & strip BOM
+      csvText = csvText.replace(/^\uFEFF/, '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+      // Try to detect delimiter: prioritize ; , then , then tab
+      const headerLine = csvText.split('\n').find(l => l.trim().length > 0) || '';
+      const candidates = [';', ',', '\t'];
+      let delimiter = ',';
+      let bestScore = -1;
+      for (const cand of candidates){
+        const score = (headerLine.match(new RegExp(`"${cand}"`,'g'))||[]).length + (headerLine.split(cand).length - 1);
+        if (score > bestScore){ bestScore = score; delimiter = cand; }
+      }
+
+      // CSV split with quotes support (RFC4180-ish)
+      function splitCSV(text, delim){
+        const rows = [];
+        let row = [], field = '', i = 0, inQuotes = false;
+        for (; i < text.length; i++){
+          const c = text[i];
+          if (inQuotes){
+            if (c === '"'){
+              if (text[i+1] === '"'){ field += '"'; i++; }
+              else { inQuotes = false; }
+            } else { field += c; }
+          } else {
+            if (c === '"'){ inQuotes = true; }
+            else if (c === '\n'){ row.push(field); rows.push(row); row = []; field = ''; }
+            else if (c === delim){ row.push(field); field = ''; }
+            else { field += c; }
+          }
         }
-        i++;
+        // flush
+        if (field.length || row.length){ row.push(field); rows.push(row); }
+        // trim trailing blank rows
+        while (rows.length && rows[rows.length-1].every(v => (v||'').trim()==='')) rows.pop();
+        return rows;
       }
-      if(field.length || row.length){ pushField(); pushRow(); }
-      while(rows.length && rows[rows.length-1].every(v=>v.trim()==='')) rows.pop();
-      if(!rows.length) return [];
-      const headers = rows[0].map(h=>h.trim().toLowerCase());
-      const idx = {question:headers.indexOf('question'),a:headers.indexOf('option_a'),b:headers.indexOf('option_b'),c:headers.indexOf('option_c'),d:headers.indexOf('option_d'),correct:headers.indexOf('correct'),time:headers.indexOf('time'),explanation:headers.indexOf('explanation')};
-      if ([idx.question, idx.a, idx.b, idx.c, idx.d, idx.correct].some(v=>v===-1)) throw new Error('En-têtes requis: question, option_a, option_b, option_c, option_d, correct[, time, explanation]');
-      const quiz=[];
-      for (let r=1;r<rows.length;r++){
+
+      const rows = splitCSV(csvText, delimiter);
+      if (!rows.length) throw new Error('CSV vide');
+      // Normalize headers
+      const norm = s => (s||'').toString().trim().toLowerCase().replace(/\s+/g, '_');
+      const headers = rows[0].map(h => norm(h));
+      const alias = {
+        'a':'option_a','b':'option_b','c':'option_c','d':'option_d',
+        'optiona':'option_a','optionb':'option_b','optionc':'option_c','optiond':'option_d',
+        'answer':'correct','reponse':'correct','bonne_reponse':'correct','bonne':'correct',
+        'temps':'time','durée':'time','duree':'time','duration':'time',
+        'explication':'explanation','feedback':'explanation'
+      };
+      const target = ['question','option_a','option_b','option_c','option_d','correct','time','explanation'];
+      const idx = {};
+      for (let i=0;i<headers.length;i++){
+        let h = headers[i];
+        if (target.includes(h)) { idx[h] = i; continue; }
+        if (alias[h] && idx[alias[h]] == null) { idx[alias[h]] = i; }
+      }
+      const required = ['question','option_a','option_b','option_c','option_d','correct'];
+      const missing = required.filter(k => idx[k] == null);
+      if (missing.length){
+        throw new Error('En-têtes manquants : ' + missing.join(', '));
+      }
+
+      function letterToIndex(v){
+        if (v == null) return null;
+        const s = String(v).trim();
+        if (s === '') return null;
+        if (/^[0-3]$/.test(s)) return parseInt(s,10);
+        const m = {A:0,B:1,C:2,D:3};
+        return m[s.toUpperCase()] ?? null;
+      }
+
+      const quiz = [];
+      const errors = [];
+      for (let r = 1; r < rows.length; r++){
         const cols = rows[r];
-        const q = (cols[idx.question]||'').trim();
-        const opts = [cols[idx.a],cols[idx.b],cols[idx.c],cols[idx.d]].map(v=>(v||'').trim());
-        if(!q || opts.some(o=>!o)) continue;
-        let correctRaw = (cols[idx.correct]||'').trim();
-        let correctIndex = /^[0-3]$/.test(correctRaw) ? parseInt(correctRaw,10) : ({A:0,B:1,C:2,D:3}[correctRaw.toUpperCase()]);
-        if (correctIndex == null || correctIndex < 0 || correctIndex > 3) continue;
-        let time = 20;
-        if (idx.time !== -1) { const t = parseInt((cols[idx.time]||'').trim(), 10); if (!isNaN(t) && t > 0) time = t; }
-        const explanation = (idx.explanation !== -1 ? (cols[idx.explanation]||'').trim() : '');
-        quiz.push({ question:q, options:opts, correctIndex, time, explanation });
+        const lineNum = r+1; // 1-based including header
+        const q = (cols[idx['question']]||'').trim();
+        const opts = ['option_a','option_b','option_c','option_d'].map(k => (cols[idx[k]]||'').trim());
+        const corrRaw = (cols[idx['correct']]||'').trim();
+        const corr = letterToIndex(corrRaw);
+        const tRaw = idx['time'] != null ? String(cols[idx['time']]||'').trim() : '';
+        const expl = idx['explanation'] != null ? String(cols[idx['explanation']]||'').trim() : '';
+
+        const errs = [];
+        if (!q) errs.push('question vide');
+        if (opts.some(o => !o)) errs.push('option manquante');
+        if (corr == null) errs.push(`correct invalide ('${corrRaw}')`);
+        let tVal = 20;
+        if (tRaw !== ''){
+          const n = parseInt(tRaw, 10);
+          if (!Number.isFinite(n) || n <= 0) errs.push(`time invalide ('${tRaw}')`);
+          else tVal = n;
+        }
+        if (errs.length){
+          errors.push({ ligne: lineNum, erreur: errs.join('; ') });
+          continue;
+        }
+        quiz.push({ question: q, options: opts, correctIndex: corr, time: tVal, explanation: expl });
       }
+      if (!quiz.length){
+        const firstErr = errors[0] ? ` — ex: ligne ${errors[0].ligne} : ${errors[0].erreur}` : '';
+        throw new Error('Aucune ligne valide' + firstErr);
+      }
+      // attach last parse diagnostics to global scope for UI if needed
+      window.__csvLastErrors = errors;
+      window.__csvLastDelimiter = delimiter;
       return quiz;
     }
+}
     document.getElementById('loadQuiz').onclick = async () => {
       if (!roomCode) { alert('Crée d’abord un salon.'); return; }
       const csvInput = document.getElementById('csvFile')?.files?.[0];
@@ -271,7 +341,7 @@
         courseMsg.textContent = `Chargé: ${course}/${file} (${quiz.length} questions)`;
         quizLoadedOk = true;
         setNextEnabled(true);
-      } catch(e){ courseMsg.textContent = 'Erreur chargement CSV: '+e.message + ' — choisissez un autre fichier ou réessayez.';
+      } catch(e){ const extra = (window.__csvLastErrors && window.__csvLastErrors.length) ? ` — ex: ligne ${window.__csvLastErrors[0].ligne} : ${window.__csvLastErrors[0].erreur}` : ''; courseMsg.textContent = 'Erreur chargement CSV: '+e.message + extra + ' — choisissez un autre fichier ou réessayez.';
         try { await refreshFiles(); } catch(_) {}
         setNextEnabled(false);
         quizLoadedOk = false;
