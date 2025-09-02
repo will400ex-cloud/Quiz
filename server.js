@@ -177,6 +177,13 @@ io.on('connection', (socket) => {
     if (!state || state.hostId !== socket.id) return;
     state.quiz = safeQuizArray(quiz);
     io.to(roomCode).emit('room:quizLoaded', { count: state.quiz.length });
+    // Remettre à jour le bandeau Statut pour l’animateur
+io.to(state.hostId).emit('host:status', {
+  totals: { players: totalPlayers(state), answered: 0 },
+  accepting: true,
+  endAt: state.endAtMs
+});
+
   });
 
   socket.on('player:join', ({ roomCode, name }) => {
