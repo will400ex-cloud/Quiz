@@ -104,20 +104,6 @@
       </div>
     </section>
 
-    
-    <!-- Classement -->
-    <section class="bg-slate-900/60 rounded-2xl p-4">
-      <h3 class="font-semibold mb-2">Classement actuel</h3>
-      <ol id="scoreboard" class="space-y-1"></ol>
-    </section>
-
-    <!-- Bannière gagnant -->
-    <div id="winnerBanner" class="hidden bg-amber-200 text-amber-900 rounded-2xl p-3 font-semibold flex items-center justify-between">
-      <span>🏆 Gagnant : <span id="winnerName"></span></span>
-      <span class="font-mono"><span id="winnerScore"></span> pts</span>
-    </div>
-
-
     <!-- Import manuel JSON/CSV -->
     <section class="bg-slate-900/60 rounded-2xl p-4">
       <h2 class="font-semibold mb-2">Importer manuellement</h2>
@@ -165,29 +151,7 @@
         try { return new TextDecoder('utf-16be').decode(bytes); } catch {}
       }
       return new TextDecoder('utf-8').decode(bytes);
-    }
-    // ---- Scoreboard helpers ----
-    function escapeHtml(s){ return (s||'').toString().replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
-    function renderScoreboard(list){
-      const sb = document.getElementById('scoreboard');
-      if (!sb || !Array.isArray(list)) return;
-      const top = [...list].sort((a,b)=> (b.score||0)-(a.score||0)).slice(0,10);
-      sb.innerHTML = top.map((p,i)=>`
-        <li class="flex items-center justify-between bg-slate-800/60 border border-slate-700 rounded px-3 py-1">
-          <span class="truncate"><span class="text-slate-400 mr-2">${i+1}.</span>${escapeHtml(p.name)}</span>
-          <span class="font-mono">${p.score||0} pts</span>
-        </li>
-      `).join('');
-    }
-    function showWinner(leaderboard){
-      const b = document.getElementById('winnerBanner'); if (!b) return;
-      if (!leaderboard || !leaderboard.length){ b.classList.add('hidden'); return; }
-      document.getElementById('winnerName').textContent = leaderboard[0].name || '—';
-      document.getElementById('winnerScore').textContent = leaderboard[0].score || 0;
-      b.classList.remove('hidden');
-    }
-
-    // ---- Socket & état ----
+    }// ---- Socket & état ----
     const socket = io();
     const $ = (id) => document.getElementById(id);
 
@@ -473,7 +437,6 @@
       livePlayers.textContent = players.length;
       playersCount.textContent = players.length;
       playersOnly.textContent = players.length;
-      renderScoreboard(players);
     });
     socket.on('room:quizLoaded', ({ count }) => {
       if (typeof count === 'number' && count > 0) {
@@ -510,7 +473,7 @@
       countGrid.innerHTML = ''; document.getElementById('correctMsg').textContent='';
       const eb = document.getElementById('explaBadge'); eb.classList.add('hidden'); eb.textContent='';
     });
-    socket.on('room:reveal', ({ correctIndex, explanation, leaderboard }) => {
+    socket.on('room:reveal', ({ correctIndex, explanation }) => {
       accepting = false; if (rafId) cancelAnimationFrame(rafId);
       for (let i=0;i<4;i++){
         const li = document.getElementById('opt'+i);
@@ -523,7 +486,6 @@
         const e = document.getElementById('explaBadge');
         e.textContent = explanation.trim(); e.classList.remove('hidden');
       }
-      if (leaderboard && leaderboard.length) { renderScoreboard(leaderboard); }
     });
     socket.on('host:counts', ({ counts, correctIndex, totals }) => {
       setCounts(totals);
@@ -536,7 +498,6 @@
       }).join('');
       document.getElementById('correctMsg').textContent = `Bonne réponse : ${'ABCD'[correctIndex]}`;
     });
-    socket.on('room:gameOver', ({ leaderboard }) => { if (leaderboard) { renderScoreboard(leaderboard); showWinner(leaderboard); } });
   </script>
 </body>
 </html>
