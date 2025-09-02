@@ -1,0 +1,45 @@
+﻿question,option_a,option_b,option_c,option_d,correct,explanation,time
+Combien de couches comporte le modèle OSI?,4,5,6,7,D,Le modèle OSI comporte 7 couches.,180
+Quelle est la couche 4 du modèle OSI?,Transport,Réseau,Session,Application,A,La couche 4 est la couche Transport (TCP/UDP).,180
+Quel protocole correspond à la couche 3 OSI?,IP,TCP,Ethernet,FTP,A,IP fonctionne à la couche Réseau (couche 3).,180
+Combien de couches a le modèle TCP/IP?,3,4,5,7,B,Le modèle TCP/IP est composé de 4 couches.,180
+Un LAN couvre généralement:,Une ville entière,Une maison ou un bureau,Un continent,Internet,B,"Un LAN couvre une zone locale (bâtiment, bureau).",180
+Un WAN permet de:,Connecter des ordinateurs d'une même salle,Connecter des réseaux à grande échelle,Relier uniquement des imprimantes,Relier des serveurs de stockage,B,Le WAN connecte des réseaux à grande distance.,180
+Quelle norme IEEE définit le Wi-Fi?,IEEE 802.3,IEEE 802.11,IEEE 802.15,IEEE 802.16,B,IEEE 802.11 définit les réseaux sans fil (Wi-Fi).,180
+Le standard 10Base-T correspond à:,10 Mbps sur paire torsadée,100 Mbps sur fibre optique,10 Mbps sur coaxial épais,1 Gbps sur cuivre,A,10Base-T signifie 10 Mbps sur twisted pair (paire torsadée).,180
+Quelle technologie correspond à 1000Base-T?,10 Mbps sur coaxial,100 Mbps fibre,1 Gbps sur paire torsadée,10 Gbps fibre,C,1000Base-T est le Gigabit Ethernet sur paires torsadées.,180
+Quelle est la limite de longueur d’un câble Ethernet cuivre (Cat5e) pour une liaison fiable?,10 m,50 m,100 m,500 m,C,La limite standard est de 100 m pour les câbles cuivre Ethernet.,180
+Quelle est la différence entre T568A et T568B?,La vitesse supportée,Le brochage des fils,Le type de connecteur,Le diamètre du câble,B,T568A/B définissent deux schémas de brochage RJ45.,180
+Quelle couleur identifie généralement une fibre optique monomode?,Bleu,Vert,Orange,Jaune,D,La fibre monomode est souvent identifiée par la couleur jaune.,180
+Quel équipement du réseau fonctionne en diffusant les trames à tous les ports?,Switch,Hub,Routeur,Passerelle,B,"Le hub diffuse sur tous les ports, causant des collisions.",180
+Quel équipement agit comme frontière entre un LAN et Internet?,Switch,Hub,Routeur,Pont,C,"Le routeur connecte différents réseaux, dont Internet.",180
+Un répéteur sert principalement à:,Filtrer le trafic,Régénérer un signal affaibli,Attribuer des adresses IP,Convertir IPv4 en IPv6,B,Le répéteur régénère un signal pour prolonger la distance.,180
+Le PoE permet de transmettre:,Uniquement de la puissance,Uniquement des données,Des données et de la puissance,Des signaux analogiques,C,PoE combine données + alimentation sur le même câble Ethernet.,180
+Un VLAN permet de:,Séparer logiquement les réseaux,Accélérer le Wi-Fi,Convertir IPv4 en IPv6,Éviter les collisions sur fibre optique,A,Un VLAN segmente logiquement les réseaux.,180
+Quelle est la taille minimale d’une trame Ethernet?,46 octets,64 octets,128 octets,1518 octets,B,Une trame Ethernet doit avoir au moins 64 octets.,180
+Quelle est la taille maximale d’une trame Ethernet standard?,512 octets,1518 octets,4096 octets,9216 octets,B,La taille maximale standard est de 1518 octets.,180
+Quelle adresse IPv4 est réservée au loopback?,192.168.0.1,10.0.0.1,127.0.0.1,255.255.255.255,C,127.0.0.1 est l'adresse de rebouclage (loopback).,180
+Quelle plage d’adresses est utilisée pour APIPA?,169.254.x.x,10.x.x.x,172.16.x.x,192.168.x.x,A,APIPA utilise la plage 169.254.x.x.,180
+Combien de bits comporte une adresse IPv6?,32,64,128,256,C,IPv6 fait 128 bits (16 octets).,180
+Le NAT est utilisé pour:,Convertir IPv6 en IPv4,Traduire des adresses privées en publiques,Attribuer des adresses MAC,Crypter des trames Ethernet,B,NAT traduit les adresses privées en adresses publiques.,180
+Le PAT se distingue du NAT car:,Il ne traduit pas les adresses IP,Il utilise les numéros de ports,Il fonctionne uniquement avec IPv6,Il fonctionne uniquement avec la fibre optique,B,PAT traduit aussi les numéros de ports pour différencier les sessions.,180
+Quel port est utilisé par HTTPS?,25,53,80,443,D,Le port 443 est utilisé pour HTTPS (HTTP sécurisé).,180
+Quel protocole associe une IP à une MAC?,DNS,ARP,ICMP,DHCP,B,ARP lie adresse IP et adresse MAC.,180
+Quel protocole utilise Ping pour tester la connectivité?,TCP,UDP,ICMP,DNS,C,Ping repose sur ICMP (requête Echo).,180
+Le protocole DNS fonctionne sur le port:,21,25,53,110,C,Le DNS utilise le port 53 (UDP/TCP).,180
+Quelle commande permet de tracer l’itinéraire des paquets réseau?,ping,tracert,netstat,ipconfig,B,La commande tracert permet de suivre le chemin des paquets.,180
+Quelle commande permet de voir les connexions réseau actives?,ping,arp,netstat,route,C,La commande netstat affiche les connexions actives.,180
+La transmission en bande de base transporte:,Des signaux numériques,Des signaux analogiques,Des ondes radio,Des signaux cryptés,A,Baseband = transmission numérique directe.,180
+La transmission en large bande transporte:,Des signaux numériques,Des signaux analogiques,Des signaux cryptés,Des adresses IP,B,Broadband = transmission analogique multi-canaux.,180
+Le multiplexage TDM signifie:,Time Division Multiplexing,Transmission Data Mode,Token Division Method,Total Data Multiplexing,A,TDM = Multiplexage par répartition temporelle.,180
+Le multiplexage FDM utilise:,La fréquence,Le temps,Les adresses MAC,Les protocoles TCP,A,FDM = Multiplexage en fréquence.,180
+Le codage Manchester code le bit 0 par:,Un front descendant,Un front montant,Pas de transition,Deux impulsions,B,"Manchester code 0 = front montant, 1 = front descendant.",180
+Quel codage ajoute des transitions même pour de longues suites de 0?,NRZ,NRZI,Manchester,Bipolaire,B,"NRZI inverse la tension à chaque 0, assurant des transitions.",180
+Quelle est la caractéristique d’un signal bipolaire?,Un seul niveau de tension,Deux niveaux de tension,Trois niveaux de tension,Pas de synchronisation,C,"Le codage bipolaire alterne entre -a, 0 et +a.",180
+Quelle est la taille d’un en-tête Ethernet (hors données)?,8 octets,14 octets,18 octets,64 octets,C,"L’en-tête Ethernet standard fait 18 octets (MAC, type, CRC).",180
+Combien de machines peut-on adresser dans un réseau /24?,64,128,254,512,C,"Un /24 = 256 adresses, moins réseau + broadcast = 254 hôtes.",180
+"Si on double la puissance d’un signal, de combien de dB augmente-t-elle?",1 dB,3 dB,6 dB,10 dB,B,Doubler une puissance correspond à +3 dB.,180
+"Wi-Fi 5 utilise 256-QAM, Wi-Fi 6 utilise 1024-QAM. Quel est le gain approximatif de débit?",10%,25%,40%,100%,C,Passer de 256-QAM à 1024-QAM augmente le débit d'environ 40%.,180
+Quel est le rôle principal d’un pont (bridge) dans un réseau?,Traduire entre protocoles différents,Relier deux segments réseau,Attribuer des adresses IP,Répéter un signal affaibli,B,Un pont relie deux segments réseau et filtre selon les adresses MAC.,180
+Quelle est la différence principale entre un hub et un switch?,"Le hub filtre selon les adresses MAC, le switch diffuse partout","Le hub diffuse partout, le switch filtre selon les adresses MAC","Le hub fonctionne en couche 3, le switch en couche 1","Le hub traduit les protocoles, le switch relie les réseaux",B,"Le hub diffuse les trames à tous, le switch envoie seulement au bon port.",180
+Quelle est la principale différence entre un switch et un routeur?,"Le switch fonctionne en couche 2 (MAC), le routeur en couche 3 (IP)","Le switch traduit entre protocoles, le routeur répète le signal","Le switch attribue des adresses IP, le routeur gère les VLANs","Le switch connecte Internet, le routeur connecte des ordinateurs locaux",A,"Le switch travaille avec les adresses MAC (couche 2), le routeur avec les adresses IP (couche 3).",180
