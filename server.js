@@ -122,6 +122,25 @@ app.get('/snapshot/:room', async (req, res) => {
   }
   res.json(snapshotState(state));
 });
+// ---- Export CSV ----
+app.get('/export/:room', (req, res) => {
+  const state = rooms.get(req.params.room);
+  if (!state) return res.status(404).send('Salon introuvable');
+
+  const header = ['Nom','Score'].join(',');
+  const rows = Array.from(state.players.values())
+    .sort((a,b)=>b.score-a.score)
+    .map(p => [
+      `"${(p.name||'').replace(/"/g,'""')}"`,
+      p.score ?? 0
+    ].join(','));
+  const csv = [header, ...rows].join('\n');
+
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="scores_${req.params.room}.csv"`);
+  res.send('\uFEFF' + csv); // BOM UTF-8 pour Excel
+});
+
 
 // ---- API de persistance d’état (pour reprise) ----
 app.post('/api/session/state', async (req, res) => {
