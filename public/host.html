@@ -3,19 +3,15 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Quiz Live — Animateur (Stable)</title>
-  <!-- Tailwind CDN: safe for dev; warning in console is normal. In prod you can keep it or prebuild. -->
+  <title>Quiz Live — Animateur</title>
   <script src="/socket.io/socket.io.js"></script>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
-  <style>
-    .pin-badge { letter-spacing: .15em; }
-    .btn:disabled { opacity: .5; cursor: not-allowed; }
-  </style>
+  <style>.pin-badge{letter-spacing:.15em}.btn:disabled{opacity:.5;cursor:not-allowed}</style>
 </head>
 <body class="min-h-screen bg-slate-950 text-slate-100">
   <div class="max-w-7xl mx-auto p-4 md:p-6 space-y-4">
-    <!-- Bandeau pâle pour logos + PIN + joueurs -->
+    <!-- Bandeau logos + PIN + joueurs -->
     <div class="bg-slate-100/90 text-slate-900 rounded-2xl p-3 shadow flex items-center gap-4">
       <img src="/images/logo_cegep.png" alt="Logo Cégep" class="h-12 w-auto object-contain" onerror="this.style.display='none'">
       <img src="/images/logo_tge.png" alt="Logo TGÉ" class="h-12 w-auto object-contain" onerror="this.style.display='none'">
@@ -30,7 +26,7 @@
       </div>
     </div>
 
-    <!-- Contrôles + statut + sélecteur de cours -->
+    <!-- Contrôles & statut & sélecteur -->
     <section class="grid md:grid-cols-4 gap-4">
       <div class="bg-slate-900/60 rounded-2xl p-4 flex flex-col gap-2">
         <h2 class="font-semibold">Contrôles</h2>
@@ -53,11 +49,9 @@
             <div id="deadline" class="text-xs text-slate-400"></div>
           </div>
         </div>
-        <div class="h-2 bg-slate-800 rounded overflow-hidden">
-          <div id="progressFill" class="h-2 bg-indigo-500" style="width:0%"></div>
-        </div>
+        <div class="h-2 bg-slate-800 rounded overflow-hidden"><div id="progressFill" class="h-2 bg-indigo-500" style="width:0%"></div></div>
 
-        <!-- Sélecteur de cours/fichiers CSV (dans public/courses/...) -->
+        <!-- Sélecteur cours / fichiers -->
         <div class="mt-3 grid md:grid-cols-3 gap-3">
           <div class="col-span-1">
             <label class="text-xs text-slate-400">Cours</label>
@@ -73,11 +67,10 @@
           </div>
         </div>
         <p id="courseMsg" class="text-xs text-slate-300"></p>
-
       </div>
     </section>
 
-    <!-- Zone Question -->
+    <!-- Question -->
     <section class="bg-slate-900/60 rounded-2xl p-4">
       <div class="flex items-start justify-between gap-4">
         <div>
@@ -86,25 +79,20 @@
           <ol id="optlist" class="list-none grid md:grid-cols-2 gap-2"></ol>
           <p id="explaBadge" class="hidden mt-3 text-slate-300 italic"></p>
         </div>
-        <div class="text-right">
-          <div id="qProgress" class="text-sm text-slate-300"></div>
-        </div>
+        <div class="text-right"><div id="qProgress" class="text-sm text-slate-300"></div></div>
       </div>
     </section>
 
     <!-- Réponses -->
     <section class="bg-slate-900/60 rounded-2xl p-4">
       <h3 class="font-semibold mb-2">Réponses</h3>
-      <div id="liveOnly" class="text-slate-200">
-        <p class="text-lg">Réponses reçues : <span id="answeredOnly" class="font-mono">0</span> / <span id="playersOnly" class="font-mono">0</span></p>
-      </div>
+      <div id="liveOnly" class="text-slate-200"><p class="text-lg">Réponses reçues : <span id="answeredOnly" class="font-mono">0</span> / <span id="playersOnly" class="font-mono">0</span></p></div>
       <div id="afterReveal" class="hidden">
         <div class="grid grid-cols-4 gap-3" id="countGrid"></div>
         <p id="correctMsg" class="mt-3 text-emerald-400 font-semibold"></p>
       </div>
     </section>
 
-    
     <!-- Classement -->
     <section class="bg-slate-900/60 rounded-2xl p-4">
       <h3 class="font-semibold mb-2">Classement actuel</h3>
@@ -116,7 +104,6 @@
       <span>🏆 Gagnant : <span id="winnerName"></span></span>
       <span class="font-mono"><span id="winnerScore"></span> pts</span>
     </div>
-
 
     <!-- Import manuel JSON/CSV -->
     <section class="bg-slate-900/60 rounded-2xl p-4">
@@ -132,8 +119,7 @@
   </div>
 
   <script>
-    
-    // --- Helpers: robust text decoding with BOM (UTF-8/UTF-16LE/UTF-16BE) ---
+    // ---- Robust decoding helpers for CSV via file or fetch ----
     async function decodeFileText(file){
       const buf = await file.arrayBuffer();
       return decodeBufferWithBOM(buf);
@@ -145,29 +131,25 @@
     }
     function decodeBufferWithBOM(buf){
       const bytes = new Uint8Array(buf);
-      // UTF-8 BOM
       if (bytes.length >= 3 && bytes[0] === 0xEF && bytes[1] === 0xBB && bytes[2] === 0xBF){
         return new TextDecoder('utf-8').decode(bytes.subarray(3));
       }
-      // UTF-16 LE BOM
       if (bytes.length >= 2 && bytes[0] === 0xFF && bytes[1] === 0xFE){
         return new TextDecoder('utf-16le').decode(bytes.subarray(2));
       }
-      // UTF-16 BE BOM
       if (bytes.length >= 2 && bytes[0] === 0xFE && bytes[1] === 0xFF){
         return new TextDecoder('utf-16be').decode(bytes.subarray(2));
       }
-      // Heuristic: many zeros indicate UTF-16 without BOM
       let zeroCount = 0; for (let i=0;i<Math.min(bytes.length, 200); i++) if (bytes[i] === 0) zeroCount++;
       if (zeroCount > 10){
-        // Guess LE
         try { return new TextDecoder('utf-16le').decode(bytes); } catch {}
         try { return new TextDecoder('utf-16be').decode(bytes); } catch {}
       }
       return new TextDecoder('utf-8').decode(bytes);
     }
+
     // ---- Scoreboard helpers ----
-    function escapeHtml(s){ return (s||'').toString().replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+    function escapeHtml(s){ return (s||'').toString().replace(/[&<>\"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',\"'\":'&#39;'}[c])); }
     function renderScoreboard(list){
       const sb = document.getElementById('scoreboard');
       if (!sb || !Array.isArray(list)) return;
@@ -187,9 +169,9 @@
       b.classList.remove('hidden');
     }
 
-    // ---- Socket & état ----
+    // ---- Socket & state ----
     const socket = io();
-    const $ = (id) => document.getElementById(id);
+    const $ = id => document.getElementById(id);
 
     let roomCode = null;
     let accepting = false;
@@ -199,12 +181,9 @@
     let quizLoadedOk = false;
 
     const nextBtn = $('nextBtn');
-    function setNextEnabled(on){
-      nextBtn.disabled = !on;
-    }
+    function setNextEnabled(on){ nextBtn.disabled = !on; }
     setNextEnabled(false);
 
-    // ---- Utilitaires UI ----
     const playersCount = $('playersCount');
     const answeredCount = $('answeredCount');
     const timerEl = $('timer');
@@ -240,26 +219,23 @@
       livePlayers.textContent = totals.players ?? 0;
     }
 
-    // ---- Boutons ----
+    // Buttons
     $('createRoom').onclick = () => { socket.emit('host:createRoom'); };
     nextBtn.onclick = () => { if (!roomCode || !quizLoadedOk) return; socket.emit('host:nextQuestion', { roomCode }); };
     $('revealBtn').onclick = () => { if (!roomCode) return; socket.emit('host:reveal', { roomCode }); };
     $('exportBtn').onclick = () => {
       if (!roomCode) return;
-      const a = document.createElement('a');
-      a.href = `/export/${roomCode}`;
-      a.download = `scores_${roomCode}.csv`;
+      const a = document.createElement('a'); a.href = `/export/${roomCode}`; a.download = `scores_${roomCode}.csv`;
       document.body.appendChild(a); a.click(); a.remove();
     };
     $('copyPin').onclick = async () => {
-      const text = $('pin').textContent.trim();
-      if (!text) return;
+      const text = $('pin').textContent.trim(); if (!text) return;
       try { await navigator.clipboard.writeText(text); $('copyPin').textContent = 'Copié !'; setTimeout(()=> $('copyPin').textContent='Copier', 1500); } catch {}
     };
 
-    // ---- Parseur CSV robuste ----
+    // CSV parser (robuste) + fallback PapaParse
     function parseCSVToQuiz(csvText){
-      window.__csvLastErrors = []; window.__csvLastDelimiter = ',';
+      window.__csvLastErrors = []; window.__csvLastDelimiter = ','; window.__csvFallbackUsed = false; window.__csvDiagHeaders = [];
       csvText = csvText.replace(/^\\uFEFF/, '').replace(/\\r\\n/g, '\\n').replace(/\\r/g, '\\n');
       const headerLine = (csvText.split('\\n').find(l => l.trim().length > 0) || '');
       const candidates = [';', ',', '\\t'];
@@ -275,11 +251,10 @@
         for (; i < text.length; i++){
           const c = text[i];
           if (inQuotes){
-            if (c === '"'){
-              if (text[i+1] === '"'){ field += '"'; i++; } else { inQuotes = false; }
-            } else { field += c; }
+            if (c === '\"'){ if (text[i+1] === '\"'){ field += '\"'; i++; } else { inQuotes = false; } }
+            else { field += c; }
           } else {
-            if (c === '"'){ inQuotes = true; }
+            if (c === '\"'){ inQuotes = true; }
             else if (c === '\\n'){ row.push(field); rows.push(row); row = []; field = ''; }
             else if (c === delim){ row.push(field); field = ''; }
             else { field += c; }
@@ -291,17 +266,10 @@
       }
 
       const rows = splitCSV(csvText, delimiter);
+      const norm = s => (s||'').toString().trim().toLowerCase().replace(/\\s+/g, '_');
+      const alias = { 'a':'option_a','b':'option_b','c':'option_c','d':'option_d','optiona':'option_a','optionb':'option_b','optionc':'option_c','optiond':'option_d','answer':'correct','reponse':'correct','bonne_reponse':'correct','bonne':'correct','temps':'time','durée':'time','duree':'time','duration':'time','explication':'explanation','feedback':'explanation' };
       if (!rows.length) throw new Error('CSV vide');
-
-      const norm = (s) => (s||'').toString().trim().toLowerCase().replace(/\\s+/g, '_');
       const headers = rows[0].map(h => norm(h));
-      const alias = {
-        'a':'option_a','b':'option_b','c':'option_c','d':'option_d',
-        'optiona':'option_a','optionb':'option_b','optionc':'option_c','optiond':'option_d',
-        'answer':'correct','reponse':'correct','bonne_reponse':'correct','bonne':'correct',
-        'temps':'time','durée':'time','duree':'time','duration':'time',
-        'explication':'explanation','feedback':'explanation'
-      };
       const target = ['question','option_a','option_b','option_c','option_d','correct','time','explanation'];
       const idx = {};
       for (let i=0;i<headers.length;i++){
@@ -347,57 +315,45 @@
         quiz.push({ question: q, options: opts, correctIndex: corr, time: tVal, explanation: expl });
       }
       if (!quiz.length){
-        // Fallback: try PapaParse with header mode
         try {
           const papa = Papa.parse(csvText, {header:true, skipEmptyLines:true});
-          const rows = papa.data || [];
-          const headers = (papa.meta && papa.meta.fields) ? papa.meta.fields : [];
-          window.__csvDiagHeaders = headers;
-          const norm = s => (s||'').toString().trim().toLowerCase().replace(/\s+/g, '_');
-          const alias = { 'a':'option_a','b':'option_b','c':'option_c','d':'option_d', 'optiona':'option_a','optionb':'option_b','optionc':'option_c','optiond':'option_d', 'answer':'correct','reponse':'correct','bonne_reponse':'correct','bonne':'correct', 'temps':'time','durée':'time','duree':'time','duration':'time', 'explication':'explanation','feedback':'explanation' };
-          const get = (obj, key) => obj[key] ?? obj[alias[key]] ?? null;
-          const quiz2=[]; const errors2=[];
-          for (let i=0; i<rows.length; i++){
-            const r = rows[i];
-            const q = (get(r,'question')||'').toString().trim();
-            const opts = ['option_a','option_b','option_c','option_d'].map(k => (get(r,k)||'').toString().trim());
-            const corrRaw = (get(r,'correct')||'').toString().trim();
-            const m = {A:0,B:1,C:2,D:3};
-            let corr = null; if (/^[0-3]$/.test(corrRaw)) corr = parseInt(corrRaw,10); else corr = m[corrRaw.toUpperCase()] ?? null;
-            let tVal = 20; const tRaw = (get(r,'time')||'').toString().trim(); if (tRaw !== '') { const n = parseInt(tRaw,10); if (Number.isFinite(n) && n>0) tVal = n; }
-            const expl = (get(r,'explanation')||'').toString().trim();
-            const lineNum = i+2;
-            const errs = []; if(!q) errs.push('question vide'); if (opts.some(o=>!o)) errs.push('option manquante'); if (corr==null) errs.push(`correct invalide ('${corrRaw}')`);
-            if (errs.length) { errors2.push({ligne: lineNum, erreur: errs.join('; ')}); continue; }
-            quiz2.push({question:q, options:opts, correctIndex:corr, time:tVal, explanation:expl});
+          const rows2 = papa.data || [];
+          const hdrs = (papa.meta && papa.meta.fields) ? papa.meta.fields : [];
+          window.__csvFallbackUsed = true; window.__csvDiagHeaders = hdrs;
+          const get = (obj, key, al) => (obj[key] ?? obj[al[key]] ?? '').toString();
+          const quiz2 = [];
+          for (let i=0; i<rows2.length; i++){
+            const r = rows2[i];
+            const q = get(r,'question', alias).trim();
+            const opts = ['option_a','option_b','option_c','option_d'].map(k => get(r,k,alias).trim());
+            const corrRaw = get(r,'correct', alias).trim();
+            const m = {A:0,B:1,C:2,D:3}; let corr = null;
+            if (/^[0-3]$/.test(corrRaw)) corr = parseInt(corrRaw,10); else corr = m[corrRaw.toUpperCase()] ?? null;
+            let tVal = 20; const tRaw = get(r,'time', alias).trim(); if (tRaw !== '') { const n = parseInt(tRaw,10); if (Number.isFinite(n) && n>0) tVal = n; }
+            const expl = get(r,'explanation', alias).trim();
+            if (!q || opts.some(o => !o) || corr == null) continue;
+            quiz2.push({ question:q, options:opts, correctIndex:corr, time:tVal, explanation:expl });
           }
-          if (quiz2.length){ window.__csvLastErrors = errors2; window.__csvFallbackUsed = true; return quiz2; }
-        } catch(_){}
-
-        const firstErr = errors[0] ? ` — ex: ligne ${errors[0].ligne} : ${errors[0].erreur}` : '';
-        throw new Error('Aucune ligne valide' + firstErr);
+          if (quiz2.length) return quiz2;
+        } catch (_e) {}
+        throw new Error('Aucune ligne valide');
       }
-      window.__csvLastErrors = errors;
       return quiz;
     }
 
     // ---- Import manuel ----
-    $('loadQuiz').onclick = async () => {
+    document.getElementById('loadQuiz').onclick = async () => {
       if (!roomCode) { alert('Crée d’abord un salon.'); return; }
       const csvInput = document.getElementById('csvFile')?.files?.[0];
       if (csvInput) {
         const text = await decodeFileText(csvInput);
         try {
           const quiz = parseCSVToQuiz(text);
-        
-          
-        const delim = (window.__csvLastDelimiter || ',');
           socket.emit('host:loadQuiz', { roomCode, quiz });
-          document.getElementById('quizStatus').textContent = `Questionnaire chargé (${quiz.length} questions) — délimiteur: ${(window.__csvLastDelimiter||',')}`;
+          document.getElementById('quizStatus').textContent = `Questionnaire chargé (${quiz.length} questions).`;
           quizLoadedOk = true; setNextEnabled(true);
         } catch(e){
-          const extra = (window.__csvLastErrors && window.__csvLastErrors.length) ? ` — ex: ligne ${window.__csvLastErrors[0].ligne} : ${window.__csvLastErrors[0].erreur}` : '';
-          document.getElementById('quizStatus').textContent = 'Erreur CSV : ' + e.message + extra;
+          document.getElementById('quizStatus').textContent = 'Erreur CSV : ' + e.message;
           quizLoadedOk = false; setNextEnabled(false);
         }
       } else {
@@ -405,7 +361,7 @@
           const raw = document.getElementById('quizJson').value;
           const quiz = JSON.parse(raw);
           socket.emit('host:loadQuiz', { roomCode, quiz });
-          document.getElementById('quizStatus').textContent = `Questionnaire chargé (${quiz.length} questions) — délimiteur: ${(window.__csvLastDelimiter||',')}`;
+          document.getElementById('quizStatus').textContent = `Questionnaire chargé (${quiz.length} questions).`;
           quizLoadedOk = true; setNextEnabled(true);
         } catch(e){
           document.getElementById('quizStatus').textContent = 'JSON invalide.';
@@ -435,7 +391,7 @@
       } catch(e){ courseMsg.textContent = 'Erreur chargement fichiers'; }
     }
     courseSelect.addEventListener('change', refreshFiles);
-    $('loadCourseCsv').onclick = async () => {
+    document.getElementById('loadCourseCsv').onclick = async () => {
       if (!roomCode) { alert('Crée d’abord un salon.'); return; }
       setNextEnabled(false); quizLoadedOk = false;
       const course = courseSelect.value; const file = fileSelect.value;
@@ -444,29 +400,50 @@
         const url = `/courses/${encodeURIComponent(course)}/${encodeURIComponent(file)}`;
         const text = await decodeUrlText(url);
         const quiz = parseCSVToQuiz(text);
-        
-        const delim = (window.__csvLastDelimiter || ',');
         socket.emit('host:loadQuiz', { roomCode, quiz });
-        courseMsg.textContent = `Chargé: ${course}/${file} (${quiz.length} questions) — délimiteur: ${(window.__csvLastDelimiter||',')}`;
+        courseMsg.textContent = `Chargé: ${course}/${file} (${quiz.length} questions)`;
         quizLoadedOk = true; setNextEnabled(true);
       } catch(e){
-        const extra = (window.__csvLastErrors && window.__csvLastErrors.length) ? ` — ex: ligne ${window.__csvLastErrors[0].ligne} : ${window.__csvLastErrors[0].erreur}` : '';
-        courseMsg.textContent = 'Erreur chargement CSV: ' + e.message + extra + ' — choisissez un autre fichier ou réessayez.';
+        courseMsg.textContent = 'Erreur chargement CSV: ' + e.message + ' — choisissez un autre fichier ou réessayez.';
         setNextEnabled(false); quizLoadedOk = false;
         try { await refreshFiles(); } catch(_) {}
       }
     };
-    $('resetImport').onclick = async () => {
+    document.getElementById('resetImport').onclick = async () => {
       courseMsg.textContent = '';
       try { await refreshCourses(); } catch(_) {}
       setNextEnabled(false); quizLoadedOk = false;
     };
 
+    // ---- Attach to existing room via ?pin=XXXX ----
+    function getQueryPin(){ const m = location.search.match(/[?&]pin=(\d{6})/); return m ? m[1] : null; }
+    function attachFromQueryPin(){
+      const qp = getQueryPin();
+      if (!qp) return;
+      roomCode = qp;
+      document.getElementById('pin').textContent = roomCode;
+      document.getElementById('exportBtn').disabled = false;
+      socket.emit('host:attach', { roomCode });
+      try { refreshCourses(); } catch(_) {}
+    }
+    attachFromQueryPin();
+
     // ---- Sockets ----
+    function setCountsAndMaybeLoop(totals, isAccepting, e){
+      accepting = !!isAccepting; if (e) endAt = e;
+      setCounts(totals);
+      if (accepting) {
+        if (rafId) cancelAnimationFrame(rafId);
+        rafId = requestAnimationFrame(loopTimer);
+        liveOnly.classList.remove('hidden');
+        afterReveal.classList.add('hidden');
+      }
+    }
+
     socket.on('host:roomCreated', (pin) => {
       roomCode = pin;
-      $('pin').textContent = pin;
-      $('exportBtn').disabled = false;
+      document.getElementById('pin').textContent = pin;
+      document.getElementById('exportBtn').disabled = false;
       refreshCourses();
     });
     socket.on('host:players', (players) => {
@@ -484,30 +461,18 @@
         quizLoadedOk = false; setNextEnabled(false);
       }
     });
-    socket.on('host:status', ({ totals, accepting: isAccepting, endAt: e }) => {
-      accepting = !!isAccepting; if (e) endAt = e;
-      setCounts(totals);
-      if (accepting) {
-        if (rafId) cancelAnimationFrame(rafId);
-        rafId = requestAnimationFrame(loopTimer);
-        liveOnly.classList.remove('hidden');
-        afterReveal.classList.add('hidden');
-      }
-    });
+    socket.on('host:status', ({ totals, accepting: isAccepting, endAt: e }) => setCountsAndMaybeLoop(totals, isAccepting, e));
     socket.on('room:question', ({ index, total, question, options, time, endAt: e, totals }) => {
       currentQ = { question, options, time: (time||20)*1000 };
       document.getElementById('qtext').textContent = `Q${index+1}/${total} — ${question}`;
       document.getElementById('qProgress').textContent = `Question ${index+1} / ${total}`;
-      document.getElementById('optlist').innerHTML = options.map((opt,i)=>{
-        return `<li id="opt${i}" class="px-3 py-2 rounded bg-slate-800/70 border border-slate-700">
+      document.getElementById('optlist').innerHTML = options.map((opt,i)=>`
+        <li id="opt${i}" class="px-3 py-2 rounded bg-slate-800/70 border border-slate-700">
           <span class="font-semibold text-slate-200 mr-2">${'ABCD'[i]}.</span>
           <span class="text-slate-200">${opt}</span>
-        </li>`;
-      }).join('');
-      accepting = true; endAt = e; setCounts(totals);
-      if (rafId) cancelAnimationFrame(rafId); rafId = requestAnimationFrame(loopTimer);
-      liveOnly.classList.remove('hidden'); afterReveal.classList.add('hidden');
-      countGrid.innerHTML = ''; document.getElementById('correctMsg').textContent='';
+        </li>`).join('');
+      setCountsAndMaybeLoop(totals, true, e);
+      document.getElementById('countGrid').innerHTML = ''; document.getElementById('correctMsg').textContent='';
       const eb = document.getElementById('explaBadge'); eb.classList.add('hidden'); eb.textContent='';
     });
     socket.on('room:reveal', ({ correctIndex, explanation, leaderboard }) => {
@@ -528,15 +493,19 @@
     socket.on('host:counts', ({ counts, correctIndex, totals }) => {
       setCounts(totals);
       liveOnly.classList.add('hidden'); afterReveal.classList.remove('hidden');
-      countGrid.innerHTML = counts.map((n,i)=>{
-        return `<div class="rounded-xl bg-slate-800 border border-slate-700 p-4 text-center ${i===correctIndex?'ring-2 ring-emerald-400':''}">
+      countGrid.innerHTML = counts.map((n,i)=>`
+        <div class="rounded-xl bg-slate-800 border border-slate-700 p-4 text-center ${i===correctIndex?'ring-2 ring-emerald-400':''}">
           <div class="text-sm text-slate-400 mb-1">${'ABCD'[i]}</div>
           <div class="text-3xl font-mono">${n}</div>
-        </div>`;
-      }).join('');
+        </div>`).join('');
       document.getElementById('correctMsg').textContent = `Bonne réponse : ${'ABCD'[correctIndex]}`;
     });
-    socket.on('room:gameOver', ({ leaderboard }) => { if (leaderboard) { renderScoreboard(leaderboard); showWinner(leaderboard); } });
+    socket.on('room:gameOver', ({ leaderboard }) => {
+      const qEl = document.querySelector('#qtext')?.closest('section');
+      const endBanner = document.getElementById('winnerBanner');
+      if (qEl) qEl.classList.add('hidden');
+      if (endBanner && leaderboard) { renderScoreboard(leaderboard); showWinner(leaderboard); }
+    });
   </script>
 </body>
 </html>
