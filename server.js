@@ -1,4 +1,4 @@
-// server.js — Auto-reveal + Courses API + Pale logo strip support
+// server.js — quiz server with resume support (minimal changes)
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
@@ -10,11 +10,12 @@ const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: '*' } });
 
 const PUBLIC_DIR = path.join(__dirname, 'public');
-
 app.use(express.static('public'));
+app.use(express.json());
+
 app.get('/host', (req, res) => res.sendFile(path.join(PUBLIC_DIR, 'host.html')));
 
-// ---- API: list courses and csv files ----
+// ---- Courses API (list subfolders & CSV files in public/courses) ----
 function listDirs(dir){
   try {
     return fs.readdirSync(dir, { withFileTypes: true })
@@ -36,18 +37,19 @@ app.get('/api/courses', (req, res) => {
   return res.json({ courses: listDirs(base) });
 });
 app.get('/api/courses/:course/files', (req, res) => {
-  const course = req.params.course.replace(/[^a-zA-Z0-9_\-]/g, '');
+  const course = (req.params.course || '').replace(/[^a-zA-Z0-9_\-]/g, '');
   const dir = path.join(PUBLIC_DIR, 'courses', course);
   if (!dir.startsWith(path.join(PUBLIC_DIR, 'courses'))) return res.status(400).json({ error: 'Chemin invalide' });
   return res.json({ files: listCsvs(dir) });
 });
 
-// ---- Quiz game state ----
-const rooms = new Map(); // roomCode -> state
+// ---- Game state ----
+const rooms = new Map(); // pin -> state
 
 function newRoomState() {
   return {
     hostId: null,
+    resumeScores: new Map(), // name -> score (used on resume)
     players: new Map(), // socket.id -> {name, score, answeredAt, lastCorrect, choiceIndex}
     pin: null,
     quiz: [],
@@ -86,6 +88,56 @@ app.get('/snapshot/:room', (req, res) => {
   if (!state) return res.status(404).json({ error: 'Salon introuvable' });
   res.json(snapshotState(state));
 });
+
+// Simple CSV export of current leaderboard (name,score)
+app.get('/export/:room', (req, res) => {
+  const state = rooms.get(req.params.room);
+  if (!state) return res.status(404).send('Salon introuvable');
+  const rows = [['name','score']].concat(leaderboard(state).map(r => [r.name, r.score]));
+  const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="scores_${req.params.room}.csv"`);
+  res.send(csv);
+});
+
+// ---- RESUME support ----
+function loadSnapshot(pin){
+  try {
+    const file = path.join(SAVE_DIR, `autosave_${pin}.json`);
+    if (!fs.existsSync(file)) return null;
+    const data = JSON.parse(fs.readFileSync(file, 'utf-8'));
+    return data;
+  } catch(e){ console.error('loadSnapshot failed:', e.message); return null; }
+}
+
+// POST /resume/:pin -> reconstruct a room from snapshot (scores + last index)
+app.post('/resume/:pin', (req, res) => {
+  const pin = (req.params.pin || '').trim();
+  if (!pin) return res.status(400).json({ ok:false, error:'PIN manquant' });
+  ensureSaveDir();
+  const snap = loadSnapshot(pin);
+  if (!snap) return res.status(404).json({ ok:false, error:'Aucun snapshot pour ce PIN' });
+
+  const state = newRoomState();
+  state.pin = pin;
+  // last revealed question index (we'll continue with next)
+  state.currentIndex = typeof snap?.history?.length === 'number' && snap.history.length > 0
+    ? (snap.history[snap.history.length - 1].index)
+    : -1;
+  state.acceptingAnswers = false;
+  state.endAtMs = null;
+
+  // preload scores by name
+  if (Array.isArray(snap.leaderboard)) {
+    for (const entry of snap.leaderboard) {
+      if (entry && entry.name) state.resumeScores.set(entry.name, entry.score || 0);
+    }
+  }
+
+  rooms.set(pin, state);
+  return res.json({ ok:true, pin, currentIndex: state.currentIndex, playersKnown: Array.from(state.resumeScores.entries()) });
+});
+
 function safeQuizArray(quiz){
   const safe = Array.isArray(quiz) ? quiz.filter(q => q && q.question && Array.isArray(q.options) && q.options.length === 4 && typeof q.correctIndex === 'number') : [];
   return safe.map(q => ({
@@ -97,6 +149,7 @@ function safeQuizArray(quiz){
   }));
 }
 
+// ---- Sockets ----
 io.on('connection', (socket) => {
   socket.on('host:createRoom', () => {
     const roomCode = Math.floor(100000 + Math.random() * 900000).toString();
@@ -107,6 +160,16 @@ io.on('connection', (socket) => {
     socket.join(roomCode);
     socket.emit('host:roomCreated', roomCode);
     io.to(state.hostId).emit('host:status', { totals: { players: 0, answered: 0 }, accepting: false, endAt: null });
+  });
+
+  // Host attaches to an existing room (after /resume)
+  socket.on('host:attach', ({ roomCode }) => {
+    const state = rooms.get(roomCode);
+    if (!state) return socket.emit('host:error', 'Salon introuvable pour reprise.');
+    state.hostId = socket.id;
+    socket.join(roomCode);
+    io.to(state.hostId).emit('host:status', { totals: { players: totalPlayers(state), answered: totalAnswered(state) }, accepting: state.acceptingAnswers, endAt: state.endAtMs });
+    io.to(state.hostId).emit('host:players', Array.from(state.players.values()).map(p => ({ name: p.name, score: p.score })));
   });
 
   socket.on('host:loadQuiz', ({ roomCode, quiz }) => {
@@ -120,10 +183,12 @@ io.on('connection', (socket) => {
     const state = rooms.get(roomCode);
     if (!state) return socket.emit('player:error', 'Salon introuvable.');
     socket.join(roomCode);
-    state.players.set(socket.id, { name: (name||'Anonyme').trim() || 'Anonyme', score: 0, answeredAt: null, lastCorrect: null, choiceIndex: null });
+    const pname = (name||'Anonyme').trim() || 'Anonyme';
+    const resumeScore = state.resumeScores.get(pname) || 0;
+    state.players.set(socket.id, { name: pname, score: resumeScore, answeredAt: null, lastCorrect: null, choiceIndex: null });
     io.to(state.hostId).emit('host:players', Array.from(state.players.values()).map(p => ({ name: p.name, score: p.score })));
     io.to(state.hostId).emit('host:status', { totals: { players: totalPlayers(state), answered: totalAnswered(state) }, accepting: state.acceptingAnswers, endAt: state.endAtMs });
-    socket.emit('player:joined', { roomCode, name });
+    socket.emit('player:joined', { roomCode, name: pname });
   });
 
   socket.on('host:nextQuestion', ({ roomCode }) => {
@@ -174,7 +239,7 @@ io.on('connection', (socket) => {
           const t = Math.max(0, Math.min(duration, p.answeredAt - state.questionStartTs));
           timeMs = t;
           const speedFactor = 1 - (t / duration);
-          const raw = 200 + 800 * speedFactor;
+          const raw = 200 + 800 * speedFactor; // 200..1000
           earned = Math.round(raw / 50) * 50;
           p.score += earned;
         }
@@ -245,9 +310,6 @@ io.on('connection', (socket) => {
     }
   });
 });
-
-process.on('unhandledRejection', (reason) => console.error('UnhandledRejection:', reason));
-process.on('uncaughtException', (err) => console.error('UncaughtException:', err));
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => console.log('Quiz server running on http://localhost:' + PORT));
