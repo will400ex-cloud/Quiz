@@ -158,7 +158,11 @@
     }
 
     // ---- Scoreboard helpers ----
-    function escapeHtml(s){ return (s||'').toString().replace(/[&<>\"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',\"'\":'&#39;'}[c])); }
+  function escapeHtml(s) {
+  return (s||'').toString().replace(/[&<>"']/g, 
+    c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;', "'":'&#39;'}[c])
+  );
+}
     function renderScoreboard(list){
       const sb = document.getElementById('scoreboard');
       if (!sb || !Array.isArray(list)) return;
