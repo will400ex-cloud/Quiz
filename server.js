@@ -1,21 +1,44 @@
-// server.js — quiz server with resume support (minimal changes)
+// server.js — Quiz server with Redis-backed session state (Render-ready)
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
 const path = require('path');
 const fs = require('fs');
 
+// --- ESM import for redisStore ---
+const importESM = (m) => new Function(`return import(${JSON.stringify(m)})`)();
+let store = null;
+(async () => {
+  try {
+    const mod = await importESM('./redisStore.js');
+    store = mod.default;
+    console.log('[server] Store mode:', store.mode());
+  } catch (e) {
+    console.error('[server] redisStore import failed:', e);
+  }
+})();
+
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: '*' } });
 
+app.use(express.json()); // <— pour POST JSON
 const PUBLIC_DIR = path.join(__dirname, 'public');
-app.use(express.static('public'));
-app.use(express.json());
 
+app.use(express.static('public'));
 app.get('/host', (req, res) => res.sendFile(path.join(PUBLIC_DIR, 'host.html')));
 
-// ---- Courses API (list subfolders & CSV files in public/courses) ----
+// ---- Health endpoint (keep-alive / monitoring) ----
+app.get('/health', async (req, res) => {
+  try {
+    const info = store ? await store.ping() : { ok: false, mode: 'n/a' };
+    res.status(200).json({ ok: true, store: info, ts: Date.now() });
+  } catch {
+    res.status(200).json({ ok: true, store: { ok: false, mode: 'unknown' }, ts: Date.now() });
+  }
+});
+
+// ---- API: list courses and csv files ----
 function listDirs(dir){
   try {
     return fs.readdirSync(dir, { withFileTypes: true })
@@ -37,19 +60,18 @@ app.get('/api/courses', (req, res) => {
   return res.json({ courses: listDirs(base) });
 });
 app.get('/api/courses/:course/files', (req, res) => {
-  const course = (req.params.course || '').replace(/[^a-zA-Z0-9_\-]/g, '');
+  const course = req.params.course.replace(/[^a-zA-Z0-9_\-]/g, '');
   const dir = path.join(PUBLIC_DIR, 'courses', course);
   if (!dir.startsWith(path.join(PUBLIC_DIR, 'courses'))) return res.status(400).json({ error: 'Chemin invalide' });
   return res.json({ files: listCsvs(dir) });
 });
 
-// ---- Game state ----
-const rooms = new Map(); // pin -> state
+// ---- Quiz game state (en mémoire pour la partie live temps réel) ----
+const rooms = new Map(); // roomCode -> state
 
 function newRoomState() {
   return {
     hostId: null,
-    resumeScores: new Map(), // name -> score (used on resume)
     players: new Map(), // socket.id -> {name, score, answeredAt, lastCorrect, choiceIndex}
     pin: null,
     quiz: [],
@@ -82,74 +104,52 @@ function autosave(roomCode, state){
   ensureSaveDir();
   const file = path.join(SAVE_DIR, `autosave_${roomCode}.json`);
   try { fs.writeFileSync(file, JSON.stringify(snapshotState(state), null, 2), 'utf-8'); } catch(e){ console.error('Autosave failed:', e.message); }
+  // Sauvegarde aussi dans Redis pour reprise post-redémarrage
+  if (store) {
+    store.saveState(roomCode, snapshotState(state)).catch(e => console.warn('Redis saveState failed:', e.message));
+  }
 }
-app.get('/snapshot/:room', (req, res) => {
+
+app.get('/snapshot/:room', async (req, res) => {
   const state = rooms.get(req.params.room);
-  if (!state) return res.status(404).json({ error: 'Salon introuvable' });
+  if (!state) {
+    // Essayer de récupérer une dernière sauvegarde côté store
+    if (store) {
+      const snap = await store.loadState(req.params.room).catch(()=>null);
+      if (snap) return res.json(snap);
+    }
+    return res.status(404).json({ error: 'Salon introuvable' });
+  }
   res.json(snapshotState(state));
 });
 
-// Simple CSV export of current leaderboard (name,score)
-app.get('/export/:room', (req, res) => {
-  const state = rooms.get(req.params.room);
-  if (!state) return res.status(404).send('Salon introuvable');
-  const rows = [['name','score']].concat(leaderboard(state).map(r => [r.name, r.score]));
-  const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
-  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-  res.setHeader('Content-Disposition', `attachment; filename="scores_${req.params.room}.csv"`);
-  res.send(csv);
-});
-
-// ---- RESUME support ----
-function loadSnapshot(pin){
+// ---- API de persistance d’état (pour reprise) ----
+app.post('/api/session/state', async (req, res) => {
   try {
-    const file = path.join(SAVE_DIR, `autosave_${pin}.json`);
-    if (!fs.existsSync(file)) return null;
-    const data = JSON.parse(fs.readFileSync(file, 'utf-8'));
-    return data;
-  } catch(e){ console.error('loadSnapshot failed:', e.message); return null; }
-}
-
-// POST /resume/:pin -> reconstruct a room from snapshot (scores + last index)
-app.post('/resume/:pin', (req, res) => {
-  const pin = (req.params.pin || '').trim();
-  if (!pin) return res.status(400).json({ ok:false, error:'PIN manquant' });
-  ensureSaveDir();
-  const snap = loadSnapshot(pin);
-  if (!snap) return res.status(404).json({ ok:false, error:'Aucun snapshot pour ce PIN' });
-
-  const state = newRoomState();
-  state.pin = pin;
-  // last revealed question index (we'll continue with next)
-  state.currentIndex = typeof snap?.history?.length === 'number' && snap.history.length > 0
-    ? (snap.history[snap.history.length - 1].index)
-    : -1;
-  state.acceptingAnswers = false;
-  state.endAtMs = null;
-
-  // preload scores by name
-  if (Array.isArray(snap.leaderboard)) {
-    for (const entry of snap.leaderboard) {
-      if (entry && entry.name) state.resumeScores.set(entry.name, entry.score || 0);
-    }
+    const { pin, state } = req.body || {};
+    if (!pin || !state) return res.status(400).json({ error: 'pin and state required' });
+    if (!store) return res.status(503).json({ error: 'store unavailable' });
+    await store.saveState(String(pin), state);
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('save state error:', e);
+    res.status(500).json({ error: 'save failed' });
   }
-
-  rooms.set(pin, state);
-  return res.json({ ok:true, pin, currentIndex: state.currentIndex, playersKnown: Array.from(state.resumeScores.entries()) });
 });
 
-function safeQuizArray(quiz){
-  const safe = Array.isArray(quiz) ? quiz.filter(q => q && q.question && Array.isArray(q.options) && q.options.length === 4 && typeof q.correctIndex === 'number') : [];
-  return safe.map(q => ({
-    question: q.question,
-    options: q.options.slice(0,4),
-    correctIndex: q.correctIndex,
-    time: typeof q.time === 'number' && q.time > 0 ? q.time : 20,
-    explanation: (q.explanation || '').toString()
-  }));
-}
+app.get('/api/session/state/:pin', async (req, res) => {
+  try {
+    if (!store) return res.status(503).json({ error: 'store unavailable' });
+    const state = await store.loadState(String(req.params.pin));
+    if (!state) return res.status(404).json({ error: 'not found' });
+    res.json({ ok: true, state });
+  } catch (e) {
+    console.error('load state error:', e);
+    res.status(500).json({ error: 'load failed' });
+  }
+});
 
-// ---- Sockets ----
+// ---- Socket.IO ----
 io.on('connection', (socket) => {
   socket.on('host:createRoom', () => {
     const roomCode = Math.floor(100000 + Math.random() * 900000).toString();
@@ -162,40 +162,21 @@ io.on('connection', (socket) => {
     io.to(state.hostId).emit('host:status', { totals: { players: 0, answered: 0 }, accepting: false, endAt: null });
   });
 
-  // Host attaches to an existing room (after /resume)
-  socket.on('host:attach', ({ roomCode }) => {
-    const state = rooms.get(roomCode);
-    if (!state) return socket.emit('host:error', 'Salon introuvable pour reprise.');
-    state.hostId = socket.id;
-    socket.join(roomCode);
-    io.to(state.hostId).emit('host:status', { totals: { players: totalPlayers(state), answered: totalAnswered(state) }, accepting: state.acceptingAnswers, endAt: state.endAtMs });
-    io.to(state.hostId).emit('host:players', Array.from(state.players.values()).map(p => ({ name: p.name, score: p.score })));
-  });
-
   socket.on('host:loadQuiz', ({ roomCode, quiz }) => {
     const state = rooms.get(roomCode);
     if (!state || state.hostId !== socket.id) return;
     state.quiz = safeQuizArray(quiz);
     io.to(roomCode).emit('room:quizLoaded', { count: state.quiz.length });
-    // Remettre à jour le bandeau Statut pour l’animateur
-io.to(state.hostId).emit('host:status', {
-  totals: { players: totalPlayers(state), answered: 0 },
-  accepting: true,
-  endAt: state.endAtMs
-});
-
   });
 
   socket.on('player:join', ({ roomCode, name }) => {
     const state = rooms.get(roomCode);
     if (!state) return socket.emit('player:error', 'Salon introuvable.');
     socket.join(roomCode);
-    const pname = (name||'Anonyme').trim() || 'Anonyme';
-    const resumeScore = state.resumeScores.get(pname) || 0;
-    state.players.set(socket.id, { name: pname, score: resumeScore, answeredAt: null, lastCorrect: null, choiceIndex: null });
+    state.players.set(socket.id, { name: (name||'Anonyme').trim() || 'Anonyme', score: 0, answeredAt: null, lastCorrect: null, choiceIndex: null });
     io.to(state.hostId).emit('host:players', Array.from(state.players.values()).map(p => ({ name: p.name, score: p.score })));
     io.to(state.hostId).emit('host:status', { totals: { players: totalPlayers(state), answered: totalAnswered(state) }, accepting: state.acceptingAnswers, endAt: state.endAtMs });
-    socket.emit('player:joined', { roomCode, name: pname });
+    socket.emit('player:joined', { roomCode, name });
   });
 
   socket.on('host:nextQuestion', ({ roomCode }) => {
@@ -205,6 +186,7 @@ io.to(state.hostId).emit('host:status', {
     if (state.currentIndex >= state.quiz.length) {
       io.to(roomCode).emit('room:gameOver', { leaderboard: leaderboard(state) });
       state.acceptingAnswers = false;
+      autosave(roomCode, state);
       return;
     }
     state.responses = [0,0,0,0];
@@ -246,7 +228,7 @@ io.to(state.hostId).emit('host:status', {
           const t = Math.max(0, Math.min(duration, p.answeredAt - state.questionStartTs));
           timeMs = t;
           const speedFactor = 1 - (t / duration);
-          const raw = 200 + 800 * speedFactor; // 200..1000
+          const raw = 200 + 800 * speedFactor;
           earned = Math.round(raw / 50) * 50;
           p.score += earned;
         }
@@ -317,6 +299,20 @@ io.to(state.hostId).emit('host:status', {
     }
   });
 });
+
+function safeQuizArray(quiz){
+  const safe = Array.isArray(quiz) ? quiz.filter(q => q && q.question && Array.isArray(q.options) && q.options.length === 4 && typeof q.correctIndex === 'number') : [];
+  return safe.map(q => ({
+    question: q.question,
+    options: q.options.slice(0,4),
+    correctIndex: q.correctIndex,
+    time: typeof q.time === 'number' && q.time > 0 ? q.time : 20,
+    explanation: (q.explanation || '').toString()
+  }));
+}
+
+process.on('unhandledRejection', (reason) => console.error('UnhandledRejection:', reason));
+process.on('uncaughtException', (err) => console.error('UncaughtException:', err));
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => console.log('Quiz server running on http://localhost:' + PORT));
