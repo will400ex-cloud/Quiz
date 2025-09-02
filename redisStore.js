@@ -1,11 +1,8 @@
-// redisStore.js
-// Usage: import store from './redisStore.js';
-// await store.saveState(pin, state); const s = await store.loadState(pin);
+// redisStore.js — Internal URL (no TLS) for Render Key Value
+// Usage côté serveur: import store from './redisStore.js'; await store.saveState(pin, state);
 
 let redis = null;
 let mode = 'memory';
-let RedisCtor = null;
-
 const DEFAULT_TTL = Number(process.env.QUIZ_STATE_TTL || 6 * 60 * 60); // 6h
 const KEY_PREFIX = process.env.QUIZ_STATE_PREFIX || 'quiz:state:';
 const memory = new Map();
@@ -25,10 +22,12 @@ async function memDel(key) { memory.delete(key); return 1; }
 try {
   const mod = await import('ioredis').catch(() => null);
   if (mod?.default && process.env.REDIS_URL) {
-    RedisCtor = mod.default;
-    redis = new RedisCtor(process.env.REDIS_URL, { tls: {} }); // TLS requis sur Render
+    const Redis = mod.default;
+    // AUCUN TLS ICI — on prend l’URL telle quelle (Internal URL Render)
+    // Exemple attendu: redis://red-d2rmetumcj7s73ets92g:6379
+    redis = new Redis(process.env.REDIS_URL);
     mode = 'redis';
-    redis.on('connect', () => console.log('[redisStore] Redis connected'));
+    redis.on('connect', () => console.log('[redisStore] Redis connected (no TLS)'));
     redis.on('error', (e) => console.error('[redisStore] Redis error:', e));
   } else {
     console.log('[redisStore] REDIS_URL absent ou ioredis non dispo → fallback mémoire');
@@ -48,7 +47,7 @@ const store = {
   },
   async loadState(pin) {
     const key = keyForPin(pin);
-    let raw = (mode === 'redis') ? await redis.get(key) : await memGet(key);
+    const raw = (mode === 'redis') ? await redis.get(key) : await memGet(key);
     if (!raw) return null;
     try { return JSON.parse(raw); } catch { return null; }
   },
