@@ -1,0 +1,542 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Quiz Live — Animateur</title>
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+  <style>.pin-badge{letter-spacing:.15em}.btn:disabled{opacity:.5;cursor:not-allowed}</style>
+</head>
+<body class="min-h-screen bg-slate-950 text-slate-100">
+  <div class="max-w-7xl mx-auto p-4 md:p-6 space-y-4">
+    <!-- Bandeau logos + PIN + joueurs -->
+    <div class="bg-slate-100/90 text-slate-900 rounded-2xl p-3 shadow flex items-center gap-4">
+      <img src="/images/logo_cegep.png" alt="Logo Cégep" class="h-12 w-auto object-contain" onerror="this.style.display='none'">
+      <img src="/images/logo_tge.png" alt="Logo TGÉ" class="h-12 w-auto object-contain" onerror="this.style.display='none'">
+      <div class="ml-auto text-center">
+        <div class="text-xs text-slate-600">Code PIN</div>
+        <div id="pin" class="pin-badge inline-block bg-yellow-400 text-slate-900 rounded-2xl px-6 py-2 text-3xl font-extrabold shadow"></div>
+        <button id="copyPin" class="ml-2 text-xs bg-slate-900 text-slate-100 hover:bg-slate-800 rounded px-2 py-1 border border-slate-700">Copier</button>
+      </div>
+      <div class="text-right ml-4">
+        <div class="text-xs text-slate-600">Joueurs connectés</div>
+        <div id="livePlayers" class="text-2xl font-mono">0</div>
+      </div>
+    </div>
+
+    <!-- Contrôles & statut & sélecteur -->
+    <section class="grid md:grid-cols-4 gap-4">
+      <div class="bg-slate-900/60 rounded-2xl p-4 flex flex-col gap-2">
+        <h2 class="font-semibold">Contrôles</h2>
+        <button id="createRoom" class="w-full bg-emerald-600 hover:bg-emerald-700 rounded p-3 font-semibold">Créer un salon</button>
+        <button id="nextBtn" class="btn w-full bg-indigo-600 hover:bg-indigo-700 rounded p-3 font-semibold">Question suivante ▶</button>
+        <button id="revealBtn" class="w-full bg-amber-600 hover:bg-amber-700 rounded p-3 font-semibold">Révéler (manuel) ✅</button>
+        <button id="exportBtn" class="w-full bg-teal-600 hover:bg-teal-700 rounded p-3 font-semibold" disabled>Exporter scores (CSV)</button>
+        <div class="mt-3 space-y-2">
+          <label class="text-xs text-slate-400">Reprendre une session (entrer le PIN)</label>
+          <div class="flex gap-2">
+            <input id="resumePinInput" maxlength="6" placeholder="123456" class="w-full bg-slate-800 border border-slate-700 rounded p-2 font-mono tracking-widest" />
+            <button id="resumeBtn" class="bg-fuchsia-600 hover:bg-fuchsia-700 rounded p-2 font-semibold">Reprendre</button>
+          </div>
+          <p id="resumeMsg" class="text-xs text-slate-300"></p>
+        </div>
+
+      </div>
+
+      <div class="bg-slate-900/60 rounded-2xl p-4 flex flex-col gap-3 md:col-span-3">
+        <h2 class="font-semibold">Statut de la question</h2>
+        <div class="flex items-center justify-between">
+          <div>
+            <div class="text-sm">Participants : <span id="playersCount" class="font-semibold">0</span></div>
+            <div class="text-sm">Réponses reçues : <span id="answeredCount" class="font-semibold">0</span></div>
+          </div>
+          <div class="text-right">
+            <div class="text-sm">Temps restant</div>
+            <div id="timer" class="text-2xl font-mono">--s</div>
+            <div id="deadline" class="text-xs text-slate-400"></div>
+          </div>
+        </div>
+        <div class="h-2 bg-slate-800 rounded overflow-hidden"><div id="progressFill" class="h-2 bg-indigo-500" style="width:0%"></div></div>
+
+        <!-- Sélecteur cours / fichiers -->
+        <div class="mt-3 grid md:grid-cols-3 gap-3">
+          <div class="col-span-1">
+            <label class="text-xs text-slate-400">Cours</label>
+            <select id="courseSelect" class="w-full bg-slate-800 border border-slate-700 rounded p-2"></select>
+          </div>
+          <div class="col-span-1">
+            <label class="text-xs text-slate-400">Fichier CSV</label>
+            <select id="fileSelect" class="w-full bg-slate-800 border border-slate-700 rounded p-2"></select>
+          </div>
+          <div class="col-span-1 flex items-end gap-2">
+            <button id="loadCourseCsv" class="w-full bg-blue-600 hover:bg-blue-700 rounded p-3 font-semibold">Charger ce CSV</button>
+            <button id="resetImport" class="w-40 bg-slate-700 hover:bg-slate-600 rounded p-3 font-semibold">Réinitialiser</button>
+          </div>
+        </div>
+        <p id="courseMsg" class="text-xs text-slate-300"></p>
+      </div>
+    </section>
+
+    <!-- Question -->
+    <section class="bg-slate-900/60 rounded-2xl p-4">
+      <div class="flex items-start justify-between gap-4">
+        <div>
+          <h3 class="font-semibold mb-2">Question en cours</h3>
+          <div id="qtext" class="text-xl mb-2 text-slate-100"></div>
+          <ol id="optlist" class="list-none grid md:grid-cols-2 gap-2"></ol>
+          <p id="explaBadge" class="hidden mt-3 text-slate-300 italic"></p>
+        </div>
+        <div class="text-right"><div id="qProgress" class="text-sm text-slate-300"></div></div>
+      </div>
+    </section>
+
+    <!-- Réponses -->
+    <section class="bg-slate-900/60 rounded-2xl p-4">
+      <h3 class="font-semibold mb-2">Réponses</h3>
+      <div id="liveOnly" class="text-slate-200"><p class="text-lg">Réponses reçues : <span id="answeredOnly" class="font-mono">0</span> / <span id="playersOnly" class="font-mono">0</span></p></div>
+      <div id="afterReveal" class="hidden">
+        <div class="grid grid-cols-4 gap-3" id="countGrid"></div>
+        <p id="correctMsg" class="mt-3 text-emerald-400 font-semibold"></p>
+      </div>
+    </section>
+
+    <!-- Classement -->
+    <section class="bg-slate-900/60 rounded-2xl p-4">
+      <h3 class="font-semibold mb-2">Classement actuel</h3>
+      <ol id="scoreboard" class="space-y-1"></ol>
+    </section>
+
+    <!-- Bannière gagnant -->
+    <div id="winnerBanner" class="hidden bg-amber-200 text-amber-900 rounded-2xl p-3 font-semibold flex items-center justify-between">
+      <span>🏆 Gagnant : <span id="winnerName"></span></span>
+      <span class="font-mono"><span id="winnerScore"></span> pts</span>
+    </div>
+
+    <!-- Import manuel JSON/CSV -->
+    <section class="bg-slate-900/60 rounded-2xl p-4">
+      <h2 class="font-semibold mb-2">Importer manuellement</h2>
+      <p class="text-sm text-slate-300 mb-2">Collez du JSON ou chargez un CSV (en-têtes : question, option_a, option_b, option_c, option_d, correct[, time, explanation]).</p>
+      <textarea id="quizJson" rows="6" class="w-full p-2 rounded bg-slate-800 border border-slate-700 font-mono text-xs" placeholder='[{"question":"…","options":["A","B","C","D"],"correctIndex":1,"time":20,"explanation":"Indice..."}]'></textarea>
+      <div class="flex items-center gap-2 mt-2">
+        <input id="csvFile" type="file" accept=".csv" class="text-xs" />
+        <button id="loadQuiz" class="bg-blue-600 hover:bg-blue-700 rounded px-3 py-2 text-sm font-semibold">Charger</button>
+      </div>
+      <p id="quizStatus" class="text-xs text-slate-300 mt-2"></p>
+    </section>
+  </div>
+
+  <script>
+    // ---- Robust decoding helpers for CSV via file or fetch ----
+    async function decodeFileText(file){
+      const buf = await file.arrayBuffer();
+      return decodeBufferWithBOM(buf);
+    }
+    async function decodeUrlText(url){
+      const res = await fetch(url);
+      const buf = await res.arrayBuffer();
+      return decodeBufferWithBOM(buf);
+    }
+    function decodeBufferWithBOM(buf){
+      const bytes = new Uint8Array(buf);
+      if (bytes.length >= 3 && bytes[0] === 0xEF && bytes[1] === 0xBB && bytes[2] === 0xBF){
+        return new TextDecoder('utf-8').decode(bytes.subarray(3));
+      }
+      if (bytes.length >= 2 && bytes[0] === 0xFF && bytes[1] === 0xFE){
+        return new TextDecoder('utf-16le').decode(bytes.subarray(2));
+      }
+      if (bytes.length >= 2 && bytes[0] === 0xFE && bytes[1] === 0xFF){
+        return new TextDecoder('utf-16be').decode(bytes.subarray(2));
+      }
+      let zeroCount = 0; for (let i=0;i<Math.min(bytes.length, 200); i++) if (bytes[i] === 0) zeroCount++;
+      if (zeroCount > 10){
+        try { return new TextDecoder('utf-16le').decode(bytes); } catch {}
+        try { return new TextDecoder('utf-16be').decode(bytes); } catch {}
+      }
+      return new TextDecoder('utf-8').decode(bytes);
+    }
+
+    // ---- Scoreboard helpers ----
+    function escapeHtml(s){ return (s||'').toString().replace(/[&<>\"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',\"'\":'&#39;'}[c])); }
+    function renderScoreboard(list){
+      const sb = document.getElementById('scoreboard');
+      if (!sb || !Array.isArray(list)) return;
+      const top = [...list].sort((a,b)=> (b.score||0)-(a.score||0)).slice(0,10);
+      sb.innerHTML = top.map((p,i)=>`
+        <li class="flex items-center justify-between bg-slate-800/60 border border-slate-700 rounded px-3 py-1">
+          <span class="truncate"><span class="text-slate-400 mr-2">${i+1}.</span>${escapeHtml(p.name)}</span>
+          <span class="font-mono">${p.score||0} pts</span>
+        </li>
+      `).join('');
+    }
+    function showWinner(leaderboard){
+      const b = document.getElementById('winnerBanner'); if (!b) return;
+      if (!leaderboard || !leaderboard.length){ b.classList.add('hidden'); return; }
+      document.getElementById('winnerName').textContent = leaderboard[0].name || '—';
+      document.getElementById('winnerScore').textContent = leaderboard[0].score || 0;
+      b.classList.remove('hidden');
+    }
+
+    // ---- Socket & state ----
+    const socket = io();
+    const $ = id => document.getElementById(id);
+
+    let roomCode = null;
+    let accepting = false;
+    let endAt = null;
+    let rafId = null;
+    let currentQ = { question: '', options: [], time: 20000 };
+    let quizLoadedOk = false;
+
+    const nextBtn = $('nextBtn');
+    function setNextEnabled(on){ nextBtn.disabled = !on; }
+    setNextEnabled(false);
+
+    const playersCount = $('playersCount');
+    const answeredCount = $('answeredCount');
+    const timerEl = $('timer');
+    const deadlineEl = $('deadline');
+    const progressFill = $('progressFill');
+    const answeredOnly = $('answeredOnly');
+    const playersOnly = $('playersOnly');
+    const afterReveal = $('afterReveal');
+    const liveOnly = $('liveOnly');
+    const countGrid = $('countGrid');
+    const livePlayers = $('livePlayers');
+    const courseSelect = $('courseSelect');
+    const fileSelect = $('fileSelect');
+    const courseMsg = $('courseMsg');
+
+    function fmtMs(ms){ const s = Math.max(0, Math.ceil(ms/1000)); return s + 's'; }
+    function loopTimer(){
+      if (!endAt) return;
+      const ms = endAt - Date.now();
+      timerEl.textContent = fmtMs(ms);
+      deadlineEl.textContent = new Date(endAt).toLocaleTimeString();
+      const total = currentQ.time || 20000;
+      const elapsed = Math.max(0, Math.min(total, total - Math.max(0, ms)));
+      progressFill.style.width = (elapsed/total*100) + '%';
+      if (ms > 0 && accepting) rafId = requestAnimationFrame(loopTimer);
+    }
+    function setCounts(totals){
+      if (!totals) return;
+      playersCount.textContent = totals.players ?? 0;
+      answeredCount.textContent = totals.answered ?? 0;
+      playersOnly.textContent = totals.players ?? 0;
+      answeredOnly.textContent = totals.answered ?? 0;
+      livePlayers.textContent = totals.players ?? 0;
+    }
+
+    // Buttons
+    $('createRoom').onclick = () => { socket.emit('host:createRoom'); };
+    nextBtn.onclick = () => { if (!roomCode || !quizLoadedOk) return; socket.emit('host:nextQuestion', { roomCode }); };
+    $('revealBtn').onclick = () => { if (!roomCode) return; socket.emit('host:reveal', { roomCode }); };
+    $('exportBtn').onclick = () => {
+      if (!roomCode) return;
+      const a = document.createElement('a'); a.href = `/export/${roomCode}`; a.download = `scores_${roomCode}.csv`;
+      document.body.appendChild(a); a.click(); a.remove();
+    };
+    $('copyPin').onclick = async () => {
+      const text = $('pin').textContent.trim(); if (!text) return;
+      try { await navigator.clipboard.writeText(text); $('copyPin').textContent = 'Copié !'; setTimeout(()=> $('copyPin').textContent='Copier', 1500); } catch {}
+    };
+
+    // CSV parser (robuste) + fallback PapaParse
+    function parseCSVToQuiz(csvText){
+      window.__csvLastErrors = []; window.__csvLastDelimiter = ','; window.__csvFallbackUsed = false; window.__csvDiagHeaders = [];
+      csvText = csvText.replace(/^\\uFEFF/, '').replace(/\\r\\n/g, '\\n').replace(/\\r/g, '\\n');
+      const headerLine = (csvText.split('\\n').find(l => l.trim().length > 0) || '');
+      const candidates = [';', ',', '\\t'];
+      let delimiter = ','; let bestScore = -1;
+      for (const cand of candidates){
+        const score = (headerLine.split(cand).length - 1);
+        if (score > bestScore){ bestScore = score; delimiter = cand; }
+      }
+      window.__csvLastDelimiter = delimiter;
+
+      function splitCSV(text, delim){
+        const rows = []; let row = []; let field = ''; let i = 0; let inQuotes = false;
+        for (; i < text.length; i++){
+          const c = text[i];
+          if (inQuotes){
+            if (c === '\"'){ if (text[i+1] === '\"'){ field += '\"'; i++; } else { inQuotes = false; } }
+            else { field += c; }
+          } else {
+            if (c === '\"'){ inQuotes = true; }
+            else if (c === '\\n'){ row.push(field); rows.push(row); row = []; field = ''; }
+            else if (c === delim){ row.push(field); field = ''; }
+            else { field += c; }
+          }
+        }
+        if (field.length || row.length){ row.push(field); rows.push(row); }
+        while (rows.length && rows[rows.length-1].every(v => (v||'').trim()==='')) rows.pop();
+        return rows;
+      }
+
+      const rows = splitCSV(csvText, delimiter);
+      const norm = s => (s||'').toString().trim().toLowerCase().replace(/\\s+/g, '_');
+      const alias = { 'a':'option_a','b':'option_b','c':'option_c','d':'option_d','optiona':'option_a','optionb':'option_b','optionc':'option_c','optiond':'option_d','answer':'correct','reponse':'correct','bonne_reponse':'correct','bonne':'correct','temps':'time','durée':'time','duree':'time','duration':'time','explication':'explanation','feedback':'explanation' };
+      if (!rows.length) throw new Error('CSV vide');
+      const headers = rows[0].map(h => norm(h));
+      const target = ['question','option_a','option_b','option_c','option_d','correct','time','explanation'];
+      const idx = {};
+      for (let i=0;i<headers.length;i++){
+        const h = headers[i];
+        if (target.includes(h)) { idx[h] = i; continue; }
+        if (alias[h] && idx[alias[h]] == null) { idx[alias[h]] = i; }
+      }
+      const required = ['question','option_a','option_b','option_c','option_d','correct'];
+      const missing = required.filter(k => idx[k] == null);
+      if (missing.length){ throw new Error('En-têtes manquants : ' + missing.join(', ')); }
+
+      function letterToIndex(v){
+        if (v == null) return null;
+        const s = String(v).trim();
+        if (s === '') return null;
+        if (/^[0-3]$/.test(s)) return parseInt(s,10);
+        const m = {A:0,B:1,C:2,D:3};
+        return (m[s.toUpperCase()] != null) ? m[s.toUpperCase()] : null;
+      }
+
+      const quiz = []; const errors = [];
+      for (let r = 1; r < rows.length; r++){
+        const cols = rows[r];
+        const lineNum = r+1;
+        const q = (cols[idx['question']]||'').trim();
+        const opts = ['option_a','option_b','option_c','option_d'].map(k => (cols[idx[k]]||'').trim());
+        const corrRaw = (cols[idx['correct']]||'').trim();
+        const corr = letterToIndex(corrRaw);
+        const tRaw = idx['time'] != null ? String(cols[idx['time']]||'').trim() : '';
+        const expl = idx['explanation'] != null ? String(cols[idx['explanation']]||'').trim() : '';
+
+        const errs = [];
+        if (!q) errs.push('question vide');
+        if (opts.some(o => !o)) errs.push('option manquante');
+        if (corr == null) errs.push(`correct invalide ('${corrRaw}')`);
+        let tVal = 20;
+        if (tRaw !== ''){
+          const n = parseInt(tRaw, 10);
+          if (!Number.isFinite(n) || n <= 0) errs.push(`time invalide ('${tRaw}')`);
+          else tVal = n;
+        }
+        if (errs.length){ errors.push({ ligne: lineNum, erreur: errs.join('; ') }); continue; }
+        quiz.push({ question: q, options: opts, correctIndex: corr, time: tVal, explanation: expl });
+      }
+      if (!quiz.length){
+        try {
+          const papa = Papa.parse(csvText, {header:true, skipEmptyLines:true});
+          const rows2 = papa.data || [];
+          const hdrs = (papa.meta && papa.meta.fields) ? papa.meta.fields : [];
+          window.__csvFallbackUsed = true; window.__csvDiagHeaders = hdrs;
+          const get = (obj, key, al) => (obj[key] ?? obj[al[key]] ?? '').toString();
+          const quiz2 = [];
+          for (let i=0; i<rows2.length; i++){
+            const r = rows2[i];
+            const q = get(r,'question', alias).trim();
+            const opts = ['option_a','option_b','option_c','option_d'].map(k => get(r,k,alias).trim());
+            const corrRaw = get(r,'correct', alias).trim();
+            const m = {A:0,B:1,C:2,D:3}; let corr = null;
+            if (/^[0-3]$/.test(corrRaw)) corr = parseInt(corrRaw,10); else corr = m[corrRaw.toUpperCase()] ?? null;
+            let tVal = 20; const tRaw = get(r,'time', alias).trim(); if (tRaw !== '') { const n = parseInt(tRaw,10); if (Number.isFinite(n) && n>0) tVal = n; }
+            const expl = get(r,'explanation', alias).trim();
+            if (!q || opts.some(o => !o) || corr == null) continue;
+            quiz2.push({ question:q, options:opts, correctIndex:corr, time:tVal, explanation:expl });
+          }
+          if (quiz2.length) return quiz2;
+        } catch (_e) {}
+        throw new Error('Aucune ligne valide');
+      }
+      return quiz;
+    }
+
+    // ---- Import manuel ----
+    document.getElementById('loadQuiz').onclick = async () => {
+      if (!roomCode) { alert('Crée d’abord un salon.'); return; }
+      const csvInput = document.getElementById('csvFile')?.files?.[0];
+      if (csvInput) {
+        const text = await decodeFileText(csvInput);
+        try {
+          const quiz = parseCSVToQuiz(text);
+          socket.emit('host:loadQuiz', { roomCode, quiz });
+          document.getElementById('quizStatus').textContent = `Questionnaire chargé (${quiz.length} questions).`;
+          quizLoadedOk = true; setNextEnabled(true);
+        } catch(e){
+          document.getElementById('quizStatus').textContent = 'Erreur CSV : ' + e.message;
+          quizLoadedOk = false; setNextEnabled(false);
+        }
+      } else {
+        try {
+          const raw = document.getElementById('quizJson').value;
+          const quiz = JSON.parse(raw);
+          socket.emit('host:loadQuiz', { roomCode, quiz });
+          document.getElementById('quizStatus').textContent = `Questionnaire chargé (${quiz.length} questions).`;
+          quizLoadedOk = true; setNextEnabled(true);
+        } catch(e){
+          document.getElementById('quizStatus').textContent = 'JSON invalide.';
+          quizLoadedOk = false; setNextEnabled(false);
+        }
+      }
+    };
+
+    // ---- API cours/CSV ----
+    async function fetchJSON(url){ const r = await fetch(url); if(!r.ok) throw new Error('HTTP '+r.status); return r.json(); }
+    async function refreshCourses(){
+      try {
+        const data = await fetchJSON('/api/courses');
+        courseSelect.innerHTML = (data.courses||[]).map(c => `<option value="${c}">${c.replace(/_/g, ' ')}</option>`).join('');
+        fileSelect.innerHTML = '';
+        courseMsg.textContent = data.courses?.length ? 'Cours détectés dans /public/courses' : 'Aucun cours trouvé (créez des sous-dossiers dans /public/courses)';
+        if (data.courses?.length) { await refreshFiles(); }
+      } catch(e){ courseMsg.textContent = 'Erreur chargement cours'; }
+    }
+    async function refreshFiles(){
+      const course = courseSelect.value;
+      if (!course) { fileSelect.innerHTML=''; return; }
+      try {
+        const data = await fetchJSON(`/api/courses/${encodeURIComponent(course)}/files`);
+        fileSelect.innerHTML = (data.files||[]).map(f => `<option value="${f}">${f}</option>`).join('');
+        if (!data.files?.length) courseMsg.textContent = 'Aucun CSV dans ce cours.';
+      } catch(e){ courseMsg.textContent = 'Erreur chargement fichiers'; }
+    }
+    courseSelect.addEventListener('change', refreshFiles);
+    document.getElementById('loadCourseCsv').onclick = async () => {
+      if (!roomCode) { alert('Crée d’abord un salon.'); return; }
+      setNextEnabled(false); quizLoadedOk = false;
+      const course = courseSelect.value; const file = fileSelect.value;
+      if (!course || !file) { courseMsg.textContent = 'Sélectionnez un cours et un CSV.'; return; }
+      try {
+        const url = `/courses/${encodeURIComponent(course)}/${encodeURIComponent(file)}`;
+        const text = await decodeUrlText(url);
+        const quiz = parseCSVToQuiz(text);
+        socket.emit('host:loadQuiz', { roomCode, quiz });
+        courseMsg.textContent = `Chargé: ${course}/${file} (${quiz.length} questions)`;
+        quizLoadedOk = true; setNextEnabled(true);
+      } catch(e){
+        courseMsg.textContent = 'Erreur chargement CSV: ' + e.message + ' — choisissez un autre fichier ou réessayez.';
+        setNextEnabled(false); quizLoadedOk = false;
+        try { await refreshFiles(); } catch(_) {}
+      }
+    };
+    document.getElementById('resetImport').onclick = async () => {
+      courseMsg.textContent = '';
+      try { await refreshCourses(); } catch(_) {}
+      setNextEnabled(false); quizLoadedOk = false;
+    };
+
+    // ---- Attach to existing room via ?pin=XXXX ----
+    function getQueryPin(){ const m = location.search.match(/[?&]pin=(\d{6})/); return m ? m[1] : null; }
+    function attachFromQueryPin(){
+      const qp = getQueryPin();
+      if (!qp) return;
+      roomCode = qp;
+      document.getElementById('pin').textContent = roomCode;
+      document.getElementById('exportBtn').disabled = false;
+      socket.emit('host:attach', { roomCode });
+      try { refreshCourses(); } catch(_) {}
+    }
+    attachFromQueryPin();
+
+    
+    // ---- Resume button ----
+    function validPin(v){ return /^[0-9]{6}$/.test(v||''); }
+    async function doResumePin(){
+      const pin = (document.getElementById('resumePinInput').value || '').trim();
+      const msg = document.getElementById('resumeMsg');
+      if (!validPin(pin)){ msg.textContent = 'PIN invalide (6 chiffres)'; return; }
+      msg.textContent = 'Reprise en cours…';
+      try {
+        const r = await fetch('/resume/' + pin, { method: 'POST' });
+        const j = await r.json();
+        if (!r.ok || !j.ok){ msg.textContent = (j && j.error) ? j.error : 'Reprise impossible.'; return; }
+        msg.textContent = 'OK — ouverture du salon…';
+        // Redirige vers /host?pin=XXXX pour s'attacher automatiquement
+        location.href = '/host?pin=' + pin;
+      } catch(e){
+        msg.textContent = 'Erreur réseau pendant la reprise.';
+      }
+    }
+    document.getElementById('resumeBtn').onclick = doResumePin;
+    document.getElementById('resumePinInput').addEventListener('keydown', (e)=>{ if (e.key === 'Enter') doResumePin(); });
+
+    // ---- Sockets ----
+    function setCountsAndMaybeLoop(totals, isAccepting, e){
+      accepting = !!isAccepting; if (e) endAt = e;
+      setCounts(totals);
+      if (accepting) {
+        if (rafId) cancelAnimationFrame(rafId);
+        rafId = requestAnimationFrame(loopTimer);
+        liveOnly.classList.remove('hidden');
+        afterReveal.classList.add('hidden');
+      }
+    }
+
+    socket.on('host:roomCreated', (pin) => {
+      roomCode = pin;
+      document.getElementById('pin').textContent = pin;
+      document.getElementById('exportBtn').disabled = false;
+      refreshCourses();
+    });
+    socket.on('host:players', (players) => {
+      livePlayers.textContent = players.length;
+      playersCount.textContent = players.length;
+      playersOnly.textContent = players.length;
+      renderScoreboard(players);
+    });
+    socket.on('room:quizLoaded', ({ count }) => {
+      if (typeof count === 'number' && count > 0) {
+        document.getElementById('quizStatus').textContent = `Questionnaire chargé (${count} questions).`;
+        quizLoadedOk = true; setNextEnabled(true);
+      } else {
+        document.getElementById('quizStatus').textContent = `Chargement échoué ou vide (${count} question).`;
+        quizLoadedOk = false; setNextEnabled(false);
+      }
+    });
+    socket.on('host:status', ({ totals, accepting: isAccepting, endAt: e }) => setCountsAndMaybeLoop(totals, isAccepting, e));
+    socket.on('room:question', ({ index, total, question, options, time, endAt: e, totals }) => {
+      currentQ = { question, options, time: (time||20)*1000 };
+      document.getElementById('qtext').textContent = `Q${index+1}/${total} — ${question}`;
+      document.getElementById('qProgress').textContent = `Question ${index+1} / ${total}`;
+      document.getElementById('optlist').innerHTML = options.map((opt,i)=>`
+        <li id="opt${i}" class="px-3 py-2 rounded bg-slate-800/70 border border-slate-700">
+          <span class="font-semibold text-slate-200 mr-2">${'ABCD'[i]}.</span>
+          <span class="text-slate-200">${opt}</span>
+        </li>`).join('');
+      setCountsAndMaybeLoop(totals, true, e);
+      document.getElementById('countGrid').innerHTML = ''; document.getElementById('correctMsg').textContent='';
+      const eb = document.getElementById('explaBadge'); eb.classList.add('hidden'); eb.textContent='';
+    });
+    socket.on('room:reveal', ({ correctIndex, explanation, leaderboard }) => {
+      accepting = false; if (rafId) cancelAnimationFrame(rafId);
+      for (let i=0;i<4;i++){
+        const li = document.getElementById('opt'+i);
+        if (li){
+          li.classList.remove('ring-2','ring-emerald-400','border-emerald-500');
+          if (i === correctIndex) li.classList.add('ring-2','ring-emerald-400','border-emerald-500');
+        }
+      }
+      if (explanation && explanation.trim()){
+        const e = document.getElementById('explaBadge');
+        e.textContent = explanation.trim(); e.classList.remove('hidden');
+      }
+      if (leaderboard && leaderboard.length) { renderScoreboard(leaderboard); }
+    });
+    socket.on('host:counts', ({ counts, correctIndex, totals }) => {
+      setCounts(totals);
+      liveOnly.classList.add('hidden'); afterReveal.classList.remove('hidden');
+      countGrid.innerHTML = counts.map((n,i)=>`
+        <div class="rounded-xl bg-slate-800 border border-slate-700 p-4 text-center ${i===correctIndex?'ring-2 ring-emerald-400':''}">
+          <div class="text-sm text-slate-400 mb-1">${'ABCD'[i]}</div>
+          <div class="text-3xl font-mono">${n}</div>
+        </div>`).join('');
+      document.getElementById('correctMsg').textContent = `Bonne réponse : ${'ABCD'[correctIndex]}`;
+    });
+    socket.on('room:gameOver', ({ leaderboard }) => {
+      const qEl = document.querySelector('#qtext')?.closest('section');
+      const endBanner = document.getElementById('winnerBanner');
+      if (qEl) qEl.classList.add('hidden');
+      if (endBanner && leaderboard) { renderScoreboard(leaderboard); showWinner(leaderboard); }
+    });
+  </script>
+</body>
+</html>
