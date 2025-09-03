@@ -1,3 +1,4 @@
+console.log('[env] has REDIS_URL:', Boolean(process.env.REDIS_URL));
 // server.js — Quiz server with Redis-backed session state (Render-ready)
 const express = require('express');
 const http = require('http');
