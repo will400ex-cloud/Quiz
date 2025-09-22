@@ -1,0 +1,11 @@
+﻿question,option_a,option_b,option_c,option_d,correct,time,explanation
+Quelle est la longueur d’une adresse IPv4 ?,16 bits,32 bits,64 bits,128 bits,B,180,Une adresse IPv4 est codée sur 32 bits.
+Quelle est la fonction principale d’un masque de sous-réseau ?,Identifier une machine,Indiquer la vitesse du réseau,Déterminer la partie réseau et la partie hôte,Augmenter le nombre d’hôtes,C,180,Le masque sépare réseau et hôte.
+"Avec un masque /24, combien d’hôtes sont utilisables ?",256,255,254,128,C,180,Un /24 laisse 8 bits hôtes → 2^8 - 2 = 254.
+Quelle est l’adresse réseau de 192.168.1.25 /24 ?,192.168.1.1,192.168.1.0,192.168.1.255,192.168.1.128,B,180,On met les bits hôtes à 0 → 192.168.1.0.
+Quelle est l’adresse broadcast de 10.0.5.20 /24 ?,10.0.5.0,10.0.5.1,10.0.5.255,10.0.5.254,C,180,On met les bits hôtes à 1 → 10.0.5.255.
+Combien d’hôtes utilisables dans un réseau /26 ?,32,64,62,30,C,180,Un /26 → 6 bits hôtes → 2^6 - 2 = 62.
+Deux adresses 192.168.1.25 /24 et 192.168.1.200 /24 sont-elles dans le même réseau ?,Oui,Non,Seulement si elles sont sur le même switch,Seulement avec un routeur,A,180,Même réseau /24 : 192.168.1.0.
+Deux adresses 192.168.1.25 /25 et 192.168.1.200 /25 sont-elles dans le même réseau ?,Oui,Non,Seulement en WiFi,Seulement si masque = /24,B,180,Avec /25 : réseaux différents (0–127 et 128–255).
+Quel est le masque correspondant à /25 ?,255.255.255.0,255.255.255.128,255.255.255.192,255.255.255.224,B,180,/25 = 25 bits à 1 → 255.255.255.128.
+"Si on veut connecter 50 appareils, quel masque minimal utiliser ?",/24,/25,/26,/27,C,180,50 hôtes nécessitent au moins 6 bits hôtes → /26.
